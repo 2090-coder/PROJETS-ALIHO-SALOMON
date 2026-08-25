@@ -1,629 +1,299 @@
 # NOVAWATCH — Câblage précis V1
 
-> Ce document fixe l'architecture électrique de la première version. Les valeurs de résistances des LED doivent être validées avec la référence exacte des LED avant assemblage définitif.
+> Version orientée câblage : les connexions importantes sont présentées sous forme de tableaux « cette broche va vers cette broche ».
 
-## 1. Composants de cette architecture
+## 1. Arduino Nano — tableau principal
 
-### Affichage
+| Broche Arduino | Va vers | Fonction |
+|---|---|---|
+| D2 | Bouton 1 | ON/OFF |
+| D3 | Bouton 2 | MODE / RESET / validation |
+| D4 | Bouton 3 | + |
+| D5 | Bouton 4 | - |
+| D6 | Buzzer passif | Son |
+| D7 | Les 2 LED du colon via résistances | `:` |
+| D8 | SER du 74HC595 #1 | DATA contour |
+| D9 | STCP des 74HC595 #1 à #7 | LATCH contour |
+| D10 | LOAD/CS du MAX7219 | CS afficheur |
+| D11 | DIN du MAX7219 | DATA afficheur |
+| D12 | Libre | Extension future |
+| D13 | CLK du MAX7219 + SHCP des 74HC595 | CLOCK partagé |
+| A4 | SDA du DS3231 | I2C DATA |
+| A5 | SCL du DS3231 | I2C CLOCK |
+| 5V | Rail +5 V | Alimentation logique |
+| GND | Rail GND | Masse commune |
 
-- Arduino Nano 5 V
-- 1 × MAX7219, boîtier DIP-24 de préférence pour le prototype
-- 114 × LED rouge 3 mm : 112 pour les segments + 2 pour `:`
-- 112 × résistances individuelles pour les LED de segments
-- 2 × résistances pour les LED du colon
-- 1 × résistance RSET pour le MAX7219
-- 1 × condensateur 10 µF près du MAX7219
-- 1 × condensateur 100 nF près du MAX7219
+## 2. MAX7219 DIP-24 — brochage précis
 
-### Contour
+| Broche MAX7219 | Nom | Va vers | Fonction |
+|---:|---|---|---|
+| 1 | DIN | Arduino D11 | Données série |
+| 2 | DIG0 | Cathode commune chiffre 1 | Dizaine des heures |
+| 3 | DIG4 | Non connecté | Non utilisé |
+| 4 | GND | GND commun | Masse |
+| 5 | DIG6 | Non connecté | Non utilisé |
+| 6 | DIG2 | Cathode commune chiffre 3 | Dizaine des minutes |
+| 7 | DIG3 | Cathode commune chiffre 4 | Unité des minutes |
+| 8 | DIG7 | Non connecté | Non utilisé |
+| 9 | GND | GND commun | Masse |
+| 10 | DIG5 | Non connecté | Non utilisé |
+| 11 | DIG1 | Cathode commune chiffre 2 | Unité des heures |
+| 12 | LOAD/CS | Arduino D10 | Validation |
+| 13 | CLK | Arduino D13 | Horloge |
+| 14 | SEG A | Anodes des LED du segment A via résistances | Segment A |
+| 15 | SEG F | Anodes des LED du segment F via résistances | Segment F |
+| 16 | SEG B | Anodes des LED du segment B via résistances | Segment B |
+| 17 | SEG G | Anodes des LED du segment G via résistances | Segment G |
+| 18 | ISET | RSET puis +5 V | Réglage du courant |
+| 19 | V+ | +5 V | Alimentation |
+| 20 | SEG C | Anodes des LED du segment C via résistances | Segment C |
+| 21 | SEG E | Anodes des LED du segment E via résistances | Segment E |
+| 22 | SEG DP | Non connecté | Pas de point décimal |
+| 23 | SEG D | Anodes des LED du segment D via résistances | Segment D |
+| 24 | DOUT | Non connecté en V1 | Extension éventuelle |
 
-- 68 × LED rouge 3 mm
-- 68 × LED verte 3 mm
-- 68 × LED bleue 3 mm
-- 7 × 74HC595
-- 7 × ULN2803A
-- 204 résistances individuelles pour les LED du contour, une par LED
+### Découplage MAX7219
 
-### Commande
+| Composant | Va entre | Position |
+|---|---|---|
+| 100 nF | +5 V ↔ GND | Au plus près du MAX7219 |
+| 10 µF | +5 V ↔ GND | Au plus près du MAX7219 |
+| RSET | ISET ↔ +5 V | Valeur à valider selon le courant voulu |
 
-- 1 × DS3231 RTC
-- 4 × boutons poussoirs
-- 1 × buzzer passif
-- alimentation 5 V régulée capable de fournir plusieurs ampères
+## 3. Afficheur 7 segments
 
----
+| Élément | Quantité |
+|---|---:|
+| LED par segment | 4 |
+| Segments par chiffre | 7 |
+| LED par chiffre | 28 |
+| Chiffres | 4 |
+| LED des segments | 112 |
+| LED colon `:` | 2 |
+| Total affichage | 114 |
+| DP | Non utilisé |
 
-## 2. Hypothèse indispensable pour l'afficheur
+| Sortie MAX7219 | Segment physique |
+|---|---|
+| SEG A | Supérieur |
+| SEG B | Supérieur droit |
+| SEG C | Inférieur droit |
+| SEG D | Inférieur |
+| SEG E | Inférieur gauche |
+| SEG F | Supérieur gauche |
+| SEG G | Central |
+| SEG DP | Non utilisé |
 
-Le MAX7219 pilote directement un afficheur **à cathode commune**. Notre afficheur artisanal doit donc être câblé comme un ensemble de quatre chiffres à cathode commune.
+| Sortie MAX7219 | Position |
+|---|---|
+| DIG0 | Dizaine heures |
+| DIG1 | Unité heures |
+| DIG2 | Dizaine minutes |
+| DIG3 | Unité minutes |
+| DIG4-DIG7 | Non utilisés |
 
-Pour chaque chiffre :
+## 4. Exemple : un segment composé de 4 LED
 
-```text
-Segment A = 4 LED rouges en parallèle fonctionnel,
-mais CHAQUE LED possède sa propre résistance.
+**Chaque LED possède sa propre résistance.**
 
-+5V / SEG-A du MAX7219
-       |
-       +-- R_A1 -- LED_A1 --+
-       +-- R_A2 -- LED_A2 --+
-       +-- R_A3 -- LED_A3 --+---- DIGx
-       +-- R_A4 -- LED_A4 --+
-```
-
-Même principe pour B, C, D, E, F et G.
-
-**Ne jamais mettre plusieurs LED en parallèle sans résistance individuelle.**
-
-Les quatre cathodes communes du chiffre sont reliées à la sortie DIG correspondante du MAX7219.
-
----
-
-## 3. Correspondance des segments
-
-Chaque chiffre utilise la nomenclature standard :
-
-```text
-       A
-      ---
-   F |   | B
-      - G -
-   E |   | C
-      ---
-       D
-```
-
-Le MAX7219 utilise :
-
-```text
-SEG A -> segment A
-SEG B -> segment B
-SEG C -> segment C
-SEG D -> segment D
-SEG E -> segment E
-SEG F -> segment F
-SEG G -> segment G
-SEG DP -> NON UTILISÉ
-```
-
-Le DP reste non connecté.
-
----
-
-## 4. Câblage MAX7219 vers les 4 chiffres
-
-Nous utilisons uniquement DIG0 à DIG3.
-
-```text
-MAX7219             Afficheur
--------------------------------------------
-SEG A               tous les segments A
-SEG B               tous les segments B
-SEG C               tous les segments C
-SEG D               tous les segments D
-SEG E               tous les segments E
-SEG F               tous les segments F
-SEG G               tous les segments G
-DIG0                cathode commune chiffre 1
-DIG1                cathode commune chiffre 2
-DIG2                cathode commune chiffre 3
-DIG3                cathode commune chiffre 4
-DIG4..DIG7          non utilisés
-SEG DP              non utilisé
-```
-
-Ordre logique de l'affichage :
+| Élément | Va vers |
+|---|---|
+| MAX7219 SEG A | Résistance A1 |
+| Résistance A1 | Anode LED A1 |
+| MAX7219 SEG A | Résistance A2 |
+| Résistance A2 | Anode LED A2 |
+| MAX7219 SEG A | Résistance A3 |
+| Résistance A3 | Anode LED A3 |
+| MAX7219 SEG A | Résistance A4 |
+| Résistance A4 | Anode LED A4 |
+| Cathodes LED A1-A4 | Cathode commune du chiffre → DIG correspondant |
 
 ```text
-DIG0 = dizaine des heures
-DIG1 = unité des heures
-DIG2 = dizaine des minutes
-DIG3 = unité des minutes
+SEG A
+  |
+  +--- R_A1 --- LED A1 ---+
+  +--- R_A2 --- LED A2 ---+
+  +--- R_A3 --- LED A3 ---+---- DIGx
+  +--- R_A4 --- LED A4 ---+
 ```
 
-Le logiciel pourra inverser l'ordre si la disposition physique l'impose.
-
----
-
-## 5. Brochage physique du MAX7219 DIP-24
-
-D'après la fiche technique Analog Devices/Maxim :
-
-```text
-Pin 1  = DIN
-Pin 2  = DIG0
-Pin 3  = DIG4
-Pin 4  = GND
-Pin 5  = DIG6
-Pin 6  = DIG2
-Pin 7  = DIG3
-Pin 8  = DIG7
-Pin 9  = GND
-Pin 10 = DIG5
-Pin 11 = DIG1
-Pin 12 = LOAD / CS
-Pin 13 = CLK
-Pin 14 = SEG A
-Pin 15 = SEG F
-Pin 16 = SEG B
-Pin 17 = SEG G
-Pin 18 = ISET
-Pin 19 = V+
-Pin 20 = SEG C
-Pin 21 = SEG E
-Pin 22 = SEG DP
-Pin 23 = SEG D
-Pin 24 = DOUT
-```
-
-Câblage alimentation :
-
-```text
-MAX7219 pin 19 (V+) -> +5 V
-MAX7219 pin 4       -> GND
-MAX7219 pin 9       -> GND
-```
-
-Ajouter au plus près du MAX7219 :
-
-```text
-+5V ----||---- GND
-        100 nF
-
-+5V ----||---- GND
-         10 µF
-```
-
----
-
-## 6. RSET du MAX7219
-
-RSET relie la broche ISET à +5 V.
-
-Pour le premier prototype, utiliser la valeur recommandée de la fiche technique pour une configuration standard et régler ensuite la luminosité dans le logiciel.
-
-**Important : ne pas choisir définitivement RSET uniquement à partir d'une estimation de courant des LED.** Les 4 LED d'un segment sont alimentées par des branches parallèles et le courant total d'un segment doit rester dans les limites du MAX7219.
-
-Le MAX7219 est spécifié pour des afficheurs à cathode commune et peut piloter jusqu'à 8 chiffres multiplexés. Sa fiche technique indique un courant de segment maximal recommandé de 40 mA et recommande un condensateur de 10 µF ainsi qu'un 100 nF près du circuit.
-
----
-
-## 7. Les deux LED du colon `:`
-
-Le colon n'est pas connecté au SEG DP du MAX7219.
-
-Nous avons deux LED rouges indépendantes :
-
-```text
-Arduino D7 ---- Rcolon1 ----|>|---- GND
-Arduino D7 ---- Rcolon2 ----|>|---- GND
-```
-
-Chaque LED possède sa propre résistance.
-
-Les deux LED s'allument ensemble pour former :
-
-```text
-HH : MM
-   ^
-   |
- deux LED rouges
-```
-
-Le logiciel pourra les faire clignoter indépendamment si nécessaire.
-
----
-
-# 8. Brochage Arduino Nano
-
-```text
-Arduino Nano        Fonction NOVAWATCH
------------------------------------------------
-D2                  Bouton ON/OFF
-D3                  Bouton MODE / RESET / validation
-D4                  Bouton +
-D5                  Bouton -
-D6                  Buzzer passif
-D7                  Colon `:`
-D8                  DATA des 74HC595
-D9                  LATCH des 74HC595
-D10                 CS / LOAD du MAX7219
-D11                 DIN du MAX7219
-D12                 Libre pour extension
-D13                 CLOCK partagé MAX7219 + 74HC595
-A4                  SDA du DS3231
-A5                  SCL du DS3231
-5V                  Rail +5 V
-GND                 Masse commune
-```
-
-Le D13 est partagé comme horloge série. Les deux circuits ont des lignes DATA différentes et des lignes LATCH/CS différentes, donc ils peuvent utiliser la même horloge.
-
----
-
-# 9. MAX7219 vers Arduino Nano
-
-```text
-Arduino Nano       MAX7219
---------------------------------
-D11                DIN pin 1
-D10                LOAD/CS pin 12
-D13                CLK pin 13
-5V                 V+ pin 19
-GND                GND pins 4 et 9
-```
-
-La broche DOUT du MAX7219 n'est pas utilisée dans la V1.
-
----
-
-# 10. Contour : pas de LED RGB intégrées
-
-NOVAWATCH utilise trois familles de LED indépendantes :
-
-```text
-ROUGE : 68 LED
-VERT  : 68 LED
-BLEU  : 68 LED
-```
-
-Chaque couleur est physiquement séparée.
-
-Comme 68 / 4 = 17, nous créons :
-
-```text
-17 groupes ROUGES de 4 LED
-17 groupes VERTS  de 4 LED
-17 groupes BLEUS  de 4 LED
-
-Total = 51 groupes
-```
-
-Un groupe correspond à quatre LED successives du contour.
-
----
-
-# 11. Câblage d'un groupe de 4 LED du contour
-
-Chaque LED possède sa propre résistance.
-
-Exemple pour un groupe rouge :
-
-```text
-+5V
- |
- +-- R1 -- LED rouge 1 --+
- +-- R2 -- LED rouge 2 --+
- +-- R3 -- LED rouge 3 --+---- ULN2803A OUT1
- +-- R4 -- LED rouge 4 --+
-```
-
-Le ULN2803A est utilisé comme interrupteur côté masse :
-
-```text
-ULN2803A OUT1 -> cathodes du groupe
-ULN2803A GND  -> GND
-```
-
-Le même principe est utilisé pour les groupes verts et bleus.
-
-**Une résistance par LED est obligatoire.**
-
----
-
-# 12. Pourquoi 7 × 74HC595 et 7 × ULN2803A ?
-
-51 groupes doivent être commandés :
-
-```text
-17 rouge + 17 vert + 17 bleu = 51 sorties
-```
-
-Un 74HC595 possède 8 sorties :
-
-```text
-51 sorties nécessaires
-51 / 8 = 6,375
-```
-
-Donc il faut **7 × 74HC595**, soit 56 sorties disponibles.
-
-Chaque sortie du 74HC595 commande une entrée du ULN2803A. Les LED ne sont pas alimentées directement par le 74HC595.
-
-Le ULN2803A fournit les interrupteurs de puissance côté masse. Il contient 8 canaux Darlington et est prévu pour les applications de pilotage de LED et autres charges.
-
----
-
-# 13. Chaînage des 74HC595
-
-```text
-Arduino D8 (DATA)
-       |
-       v
-+------------+
-| 74HC595 #1 |
-+-----+------+
-      | Q7S
-      v
-+------------+
-| 74HC595 #2 |
-+-----+------+
-      | Q7S
-      v
-+------------+
-| 74HC595 #3 |
-+-----+------+
-      |
-     ...
-      |
-      v
-+------------+
-| 74HC595 #7 |
-+------------+
-```
-
-Les lignes communes :
-
-```text
-Arduino D13 -> SHCP / CLOCK de tous les 74HC595
-Arduino D9  -> STCP / LATCH de tous les 74HC595
-+5V         -> VCC de tous les 74HC595
-GND         -> GND de tous les 74HC595
-```
-
-Pour chaque 74HC595 :
-
-```text
-MR / SRCLR -> +5V
-OE         -> GND
-```
-
-Pour un prototype plus robuste, ajouter un condensateur 100 nF près de chaque 74HC595.
-
----
-
-# 14. Attribution des 56 sorties
-
-Nous réservons 51 sorties aux groupes de contour et 5 sorties restent libres.
-
-```text
-74HC595 #1
-Q0 -> Rouge groupe 01
-Q1 -> Rouge groupe 02
-Q2 -> Rouge groupe 03
-Q3 -> Rouge groupe 04
-Q4 -> Rouge groupe 05
-Q5 -> Rouge groupe 06
-Q6 -> Rouge groupe 07
-Q7 -> Rouge groupe 08
-
-74HC595 #2
-Q0 -> Rouge groupe 09
-Q1 -> Rouge groupe 10
-Q2 -> Rouge groupe 11
-Q3 -> Rouge groupe 12
-Q4 -> Rouge groupe 13
-Q5 -> Rouge groupe 14
-Q6 -> Rouge groupe 15
-Q7 -> Rouge groupe 16
-
-74HC595 #3
-Q0 -> Rouge groupe 17
-Q1 -> Vert groupe 01
-Q2 -> Vert groupe 02
-Q3 -> Vert groupe 03
-Q4 -> Vert groupe 04
-Q5 -> Vert groupe 05
-Q6 -> Vert groupe 06
-Q7 -> Vert groupe 07
-
-74HC595 #4
-Q0 -> Vert groupe 08
-Q1 -> Vert groupe 09
-Q2 -> Vert groupe 10
-Q3 -> Vert groupe 11
-Q4 -> Vert groupe 12
-Q5 -> Vert groupe 13
-Q6 -> Vert groupe 14
-Q7 -> Vert groupe 15
-
-74HC595 #5
-Q0 -> Vert groupe 16
-Q1 -> Vert groupe 17
-Q2 -> Bleu groupe 01
-Q3 -> Bleu groupe 02
-Q4 -> Bleu groupe 03
-Q5 -> Bleu groupe 04
-Q6 -> Bleu groupe 05
-Q7 -> Bleu groupe 06
-
-74HC595 #6
-Q0 -> Bleu groupe 07
-Q1 -> Bleu groupe 08
-Q2 -> Bleu groupe 09
-Q3 -> Bleu groupe 10
-Q4 -> Bleu groupe 11
-Q5 -> Bleu groupe 12
-Q6 -> Bleu groupe 13
-Q7 -> Bleu groupe 14
-
-74HC595 #7
-Q0 -> Bleu groupe 15
-Q1 -> Bleu groupe 16
-Q2 -> Bleu groupe 17
-Q3-Q7 -> réservées pour extension
-```
-
----
-
-# 15. Correspondance 74HC595 -> ULN2803A
-
-Chaque sortie Q du 74HC595 va vers une entrée IN du ULN2803A correspondant.
-
-Exemple :
-
-```text
-74HC595 #1 Q0 -> ULN2803A #1 IN1
-ULN2803A #1 OUT1 -> cathodes des 4 LED rouges du groupe 01
-```
-
-Même principe pour les 51 groupes.
-
-Les 7 ULN2803A ont leur GND relié à la masse commune.
-
-Les sorties non utilisées du dernier ULN2803A restent non connectées.
-
----
-
-# 16. Alimentation
-
-Architecture recommandée pour le prototype :
-
-```text
-Prise JACK DC
-     |
-     v
-Alimentation DC externe
-     |
-     v
-Convertisseur abaisseur (buck)
-     |
-     +---- +5V principal -------------------+
-     |                                      |
-     |                                      +--> Arduino Nano 5V
-     |                                      +--> MAX7219
-     |                                      +--> DS3231
-     |                                      +--> 74HC595 x7
-     |                                      +--> LEDs contour
-     |                                      +--> colon
-     |
-     +---- GND commun ----------------------+
-```
-
-Pour le prototype, viser une alimentation **5 V régulée d'au moins 3 A**, avec marge supplémentaire recommandée si plusieurs groupes du contour doivent être allumés simultanément.
-
-Ne pas alimenter les 200+ LED de contour depuis le régulateur 5 V du Nano.
-
-Toutes les masses doivent être communes.
-
----
-
-# 17. Découplage
-
-Minimum :
-
-```text
-MAX7219 : 100 nF + 10 µF
-Chaque 74HC595 : 100 nF
-DS3231 : 100 nF si le module n'en possède pas déjà
-```
-
-Les condensateurs doivent être placés physiquement près des circuits intégrés.
-
----
-
-# 18. Résistances des LED — première estimation
-
-Les LED 3 mm n'ont pas toutes la même tension directe. Les valeurs finales seront calculées à partir de la référence exacte des LED.
-
-Pour le contour, on commence avec une résistance individuelle plutôt élevée, par exemple **680 Ω**, afin de privilégier la sécurité lors du premier test.
-
-Exemple pour une LED rouge approximativement Vf = 2,0 V à 5 V :
-
-```text
-R = (5 V - 2 V) / 0,0044 A
-R ≈ 680 Ω
-```
-
-Le courant réel dépendra de la LED et de la tension directe.
-
-Pour les LED vertes et bleues, Vf est différente : ne pas supposer qu'elles ont la même Vf que les rouges.
-
----
-
-# 19. Résumé du câblage
-
-```text
-                         +5V
-                          |
-        +-----------------+------------------+
-        |                 |                  |
-        v                 v                  v
-     MAX7219            DS3231          74HC595 x7
-        |                                      |
-        |                                      v
-        |                                  ULN2803A x7
-        |                                      |
-        v                                      v
-   4 chiffres                            51 groupes
-   112 LED                                de 4 LED
-      +                                       |
-  2 colon                                R / V / B
-      |
-      v
-   HH : MM
-```
-
----
-
-# 20. Tests obligatoires avant assemblage final
-
-### Test 1
-
-Construire seulement **un chiffre** avec 7 segments et 4 LED par segment.
-
-### Test 2
-
-Vérifier chaque LED et chaque résistance individuellement.
-
-### Test 3
-
-Connecter ce chiffre au MAX7219.
-
-### Test 4
-
-Afficher :
-
-```text
-0
-1
-2
-3
-4
-5
-6
-7
-8
-9
-```
-
-### Test 5
-
-Construire les 4 chiffres et tester :
-
-```text
-00:00
-12:34
-88:88
-23:59
-```
-
-### Test 6
-
-Construire un seul groupe de 4 LED rouges du contour avec un 74HC595 + ULN2803A.
-
-### Test 7
-
-Tester un groupe vert puis bleu.
-
-### Test 8
-
-Valider les 51 groupes avant de fabriquer le contour complet.
-
----
-
-## Sources techniques
-
-- MAX7219 : Analog Devices / Maxim — pilote jusqu'à 8 chiffres, multiplexage intégré et affichage à cathode commune.
-- 74HC595 : Nexperia / Texas Instruments — registre à décalage 8 bits avec sorties parallèles, adapté à l'extension d'E/S.
-- ULN2803A : Texas Instruments / STMicroelectronics — réseau de 8 transistors Darlington utilisé ici comme drivers côté masse.
+Même principe pour les 7 segments et les 4 chiffres.
+
+## 5. Colon `:`
+
+| Arduino | Va vers | Puis vers |
+|---|---|---|
+| D7 | Résistance colon 1 | LED colon haut → GND |
+| D7 | Résistance colon 2 | LED colon bas → GND |
+
+Le colon n'utilise pas SEG DP.
+
+## 6. Contour — LED séparées par couleur
+
+| Couleur | LED 3 mm | Groupes de 4 |
+|---|---:|---:|
+| Rouge | 68 | 17 |
+| Vert | 68 | 17 |
+| Bleu | 68 | 17 |
+| Total | 204 | 51 |
+
+Il ne s'agit pas de LED RGB intégrées : chaque LED a une seule couleur.
+
+## 7. Groupe contour de 4 LED
+
+| Élément | Va vers |
+|---|---|
+| +5 V | Résistance R1 |
+| Résistance R1 | Anode LED 1 |
+| +5 V | Résistance R2 |
+| Résistance R2 | Anode LED 2 |
+| +5 V | Résistance R3 |
+| Résistance R3 | Anode LED 3 |
+| +5 V | Résistance R4 |
+| Résistance R4 | Anode LED 4 |
+| Cathodes LED 1-4 | Sortie OUT du ULN2803A |
+
+## 8. 74HC595 → ULN2803A → contour
+
+| 74HC595 | Sortie | ULN2803A | Entrée | Groupe |
+|---|---|---|---|---|
+| #1 | Q0 | #1 | IN1 | Rouge 01 |
+| #1 | Q1 | #1 | IN2 | Rouge 02 |
+| #1 | Q2 | #1 | IN3 | Rouge 03 |
+| #1 | Q3 | #1 | IN4 | Rouge 04 |
+| #1 | Q4 | #1 | IN5 | Rouge 05 |
+| #1 | Q5 | #1 | IN6 | Rouge 06 |
+| #1 | Q6 | #1 | IN7 | Rouge 07 |
+| #1 | Q7 | #1 | IN8 | Rouge 08 |
+| #2 | Q0 | #2 | IN1 | Rouge 09 |
+| #2 | Q1 | #2 | IN2 | Rouge 10 |
+| #2 | Q2 | #2 | IN3 | Rouge 11 |
+| #2 | Q3 | #2 | IN4 | Rouge 12 |
+| #2 | Q4 | #2 | IN5 | Rouge 13 |
+| #2 | Q5 | #2 | IN6 | Rouge 14 |
+| #2 | Q6 | #2 | IN7 | Rouge 15 |
+| #2 | Q7 | #2 | IN8 | Rouge 16 |
+| #3 | Q0 | #3 | IN1 | Rouge 17 |
+| #3 | Q1 | #3 | IN2 | Vert 01 |
+| #3 | Q2 | #3 | IN3 | Vert 02 |
+| #3 | Q3 | #3 | IN4 | Vert 03 |
+| #3 | Q4 | #3 | IN5 | Vert 04 |
+| #3 | Q5 | #3 | IN6 | Vert 05 |
+| #3 | Q6 | #3 | IN7 | Vert 06 |
+| #3 | Q7 | #3 | IN8 | Vert 07 |
+| #4 | Q0 | #4 | IN1 | Vert 08 |
+| #4 | Q1 | #4 | IN2 | Vert 09 |
+| #4 | Q2 | #4 | IN3 | Vert 10 |
+| #4 | Q3 | #4 | IN4 | Vert 11 |
+| #4 | Q4 | #4 | IN5 | Vert 12 |
+| #4 | Q5 | #4 | IN6 | Vert 13 |
+| #4 | Q6 | #4 | IN7 | Vert 14 |
+| #4 | Q7 | #4 | IN8 | Vert 15 |
+| #5 | Q0 | #5 | IN1 | Vert 16 |
+| #5 | Q1 | #5 | IN2 | Vert 17 |
+| #5 | Q2 | #5 | IN3 | Bleu 01 |
+| #5 | Q3 | #5 | IN4 | Bleu 02 |
+| #5 | Q4 | #5 | IN5 | Bleu 03 |
+| #5 | Q5 | #5 | IN6 | Bleu 04 |
+| #5 | Q6 | #5 | IN7 | Bleu 05 |
+| #5 | Q7 | #5 | IN8 | Bleu 06 |
+| #6 | Q0 | #6 | IN1 | Bleu 07 |
+| #6 | Q1 | #6 | IN2 | Bleu 08 |
+| #6 | Q2 | #6 | IN3 | Bleu 09 |
+| #6 | Q3 | #6 | IN4 | Bleu 10 |
+| #6 | Q4 | #6 | IN5 | Bleu 11 |
+| #6 | Q5 | #6 | IN6 | Bleu 12 |
+| #6 | Q6 | #6 | IN7 | Bleu 13 |
+| #6 | Q7 | #6 | IN8 | Bleu 14 |
+| #7 | Q0 | #7 | IN1 | Bleu 15 |
+| #7 | Q1 | #7 | IN2 | Bleu 16 |
+| #7 | Q2 | #7 | IN3 | Bleu 17 |
+| #7 | Q3-Q7 | — | — | Réservées |
+
+## 9. Chaînage des 74HC595
+
+| Source | Va vers | Fonction |
+|---|---|---|
+| Arduino D8 | SER #1 | DATA |
+| Q7S #1 | SER #2 | Chaînage |
+| Q7S #2 | SER #3 | Chaînage |
+| Q7S #3 | SER #4 | Chaînage |
+| Q7S #4 | SER #5 | Chaînage |
+| Q7S #5 | SER #6 | Chaînage |
+| Q7S #6 | SER #7 | Chaînage |
+| Arduino D13 | SHCP #1 à #7 | CLOCK |
+| Arduino D9 | STCP #1 à #7 | LATCH |
+| +5 V | VCC #1 à #7 | Alimentation |
+| GND | GND #1 à #7 | Masse |
+| +5 V | MR/SRCLR #1 à #7 | Reset désactivé |
+| GND | OE #1 à #7 | Sorties activées |
+
+## 10. DS3231
+
+| Arduino Nano | DS3231 | Fonction |
+|---|---|---|
+| A4 | SDA | I2C DATA |
+| A5 | SCL | I2C CLOCK |
+| 5V | VCC | Alimentation |
+| GND | GND | Masse |
+
+## 11. Boutons
+
+| Bouton | Broche Arduino | Fonction |
+|---|---|---|
+| Bouton 1 | D2 | ON/OFF |
+| Bouton 2 | D3 | RESET / MODE / validation |
+| Bouton 3 | D4 | + |
+| Bouton 4 | D5 | - |
+
+Pour le premier prototype : bouton entre broche Arduino et GND, avec `INPUT_PULLUP`.
+
+## 12. Buzzer
+
+| Arduino | Va vers | Fonction |
+|---|---|---|
+| D6 | Buzzer passif | Son |
+| GND | Buzzer | Masse |
+
+## 13. Alimentation
+
+| Élément | Va vers |
+|---|---|
+| Prise JACK | Entrée alimentation |
+| Alimentation/buck | +5 V régulé |
+| +5 V principal | Arduino + MAX7219 + DS3231 + 74HC595 + LEDs |
+| GND principal | Masse commune |
+
+Prévoir au minimum une alimentation 5 V régulée de 3 A pour le prototype, avec marge selon les groupes du contour allumés.
+
+**Ne pas alimenter les 204 LED du contour depuis le régulateur du Nano.**
+
+## 14. Résistances
+
+| Partie | Nombre de LED | Règle |
+|---|---:|---|
+| Segments | 112 | 1 résistance par LED |
+| Colon | 2 | 1 résistance par LED |
+| Contour rouge | 68 | 1 résistance par LED |
+| Contour vert | 68 | 1 résistance par LED |
+| Contour bleu | 68 | 1 résistance par LED |
+
+Pour les premiers essais du contour à 5 V, 680 Ω est une valeur de départ prudente. La valeur finale doit être calculée avec la tension directe et le courant cible des LED réelles. La valeur RSET du MAX7219 sera fixée après validation du courant voulu.
+
+## 15. Ordre de montage
+
+| Étape | Ce qu'on câble | Validation |
+|---:|---|---|
+| 1 | 4 LED + 4 résistances = 1 segment | Segment OK |
+| 2 | 28 LED = 1 chiffre `8` | 7 segments OK |
+| 3 | 1 chiffre + MAX7219 | Multiplexage OK |
+| 4 | 4 chiffres + colon | `00:00` / `88:88` |
+| 5 | DS3231 | Heure OK |
+| 6 | 4 boutons | Commandes OK |
+| 7 | 1 groupe rouge contour | Driver OK |
+| 8 | 1 groupe vert + 1 bleu | Couleurs OK |
+| 9 | 51 groupes contour | Animation OK |
+| 10 | Buzzer | Sons OK |
+| 11 | Tout le système | NOVAWATCH complet |
+
+**On valide chaque étape avant de passer à la suivante.**

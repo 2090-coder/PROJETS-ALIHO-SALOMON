@@ -1,45 +1,41 @@
-#include <Arduino.h>
 #include <Wire.h>
 
 // ============================================================
 // NOVAWATCH
 // Arduino Nano + MAX7219 + DS3231 + 7x74HC595 + 7xULN2803A
+// Entree alimentation : 12 V DC
 // ============================================================
 
-// -------------------- Arduino pins ---------------------------
-const uint8_t PIN_BUTTON_POWER = 2;
-const uint8_t PIN_BUTTON_MODE  = 3;
-const uint8_t PIN_BUTTON_PLUS  = 4;
-const uint8_t PIN_BUTTON_MINUS = 5;
-const uint8_t PIN_BUZZER       = 6;
-const uint8_t PIN_COLON        = 7;
+const byte PIN_BUTTON_POWER = 2;
+const byte PIN_BUTTON_MODE  = 3;
+const byte PIN_BUTTON_PLUS  = 4;
+const byte PIN_BUTTON_MINUS = 5;
+const byte PIN_BUZZER       = 6;
+const byte PIN_COLON        = 7;
 
-const uint8_t PIN_595_DATA  = 8;   // DS pin 14
-const uint8_t PIN_595_LATCH = 9;   // STCP pin 12
-const uint8_t PIN_MAX_CS    = 10;  // LOAD/CS pin 12
-const uint8_t PIN_MAX_DATA  = 11;  // DIN pin 1
-const uint8_t PIN_595_CLOCK = 13;  // SHCP pin 11
-const uint8_t PIN_MAX_CLOCK = 13;  // CLK pin 13
+const byte PIN_595_DATA  = 8;
+const byte PIN_595_LATCH = 9;
+const byte PIN_MAX_CS    = 10;
+const byte PIN_MAX_DATA  = 11;
+const byte PIN_CLOCK     = 13;
 
-const uint8_t RTC_ADDRESS = 0x68;
+const byte RTC_ADDRESS = 0x68;
 
-// -------------------- MAX7219 registers ----------------------
-const uint8_t MAX_REG_DECODE      = 0x09;
-const uint8_t MAX_REG_INTENSITY   = 0x0A;
-const uint8_t MAX_REG_SCANLIMIT   = 0x0B;
-const uint8_t MAX_REG_SHUTDOWN    = 0x0C;
-const uint8_t MAX_REG_DISPLAYTEST = 0x0F;
+const byte MAX_REG_DECODE      = 0x09;
+const byte MAX_REG_INTENSITY   = 0x0A;
+const byte MAX_REG_SCANLIMIT   = 0x0B;
+const byte MAX_REG_SHUTDOWN    = 0x0C;
+const byte MAX_REG_DISPLAYTEST = 0x0F;
 
-// Segment bits: A B C D E F G DP
-const uint8_t SEG_A  = 0x01;
-const uint8_t SEG_B  = 0x02;
-const uint8_t SEG_C  = 0x04;
-const uint8_t SEG_D  = 0x08;
-const uint8_t SEG_E  = 0x10;
-const uint8_t SEG_F  = 0x20;
-const uint8_t SEG_G  = 0x40;
+const byte SEG_A = 0x01;
+const byte SEG_B = 0x02;
+const byte SEG_C = 0x04;
+const byte SEG_D = 0x08;
+const byte SEG_E = 0x10;
+const byte SEG_F = 0x20;
+const byte SEG_G = 0x40;
 
-const uint8_t DIGIT_MASKS[10] = {
+const byte DIGIT_MASK[10] = {
   SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F,
   SEG_B | SEG_C,
   SEG_A | SEG_B | SEG_D | SEG_E | SEG_G,
@@ -52,113 +48,97 @@ const uint8_t DIGIT_MASKS[10] = {
   SEG_A | SEG_B | SEG_C | SEG_D | SEG_F | SEG_G
 };
 
-// -------------------- Contour -------------------------------
-// 51 groups = 17 red + 17 green + 17 blue.
-// Each group controls 4 LEDs of the same color through one ULN2803A channel.
-const uint8_t SHIFT_REG_COUNT = 7;
-const uint8_t CONTOUR_GROUPS = 51;
-uint8_t contourRegisters[SHIFT_REG_COUNT] = {0};
+const byte SHIFT_REG_COUNT = 7;
+const byte GROUPS_PER_COLOR = 17;
+const byte CONTOUR_GROUPS = 51;
+byte contourData[SHIFT_REG_COUNT];
 
-const unsigned long CONTOUR_INTERVAL = 80;
+const unsigned long CONTOUR_INTERVAL = 100;
 unsigned long lastContourUpdate = 0;
-uint8_t contourPosition = 0;
+byte contourPosition = 0;
+byte contourColor = 0;
 
-// -------------------- RTC data -------------------------------
-uint8_t rtcHour = 0;
-uint8_t rtcMinute = 0;
-uint8_t rtcSecond = 0;
-unsigned long lastRtcRead = 0;
+byte hourNow = 0;
+byte minuteNow = 0;
+byte secondNow = 0;
+unsigned long lastRTCRead = 0;
+const unsigned long RTC_INTERVAL = 500;
 
-// -------------------- Main states ----------------------------
 bool watchOn = false;
 bool startupActive = false;
-unsigned long startupStarted = 0;
-uint8_t startupStep = 0;
-unsigned long lastStartupStep = 0;
-const unsigned long STARTUP_DURATION = 1600;
-const unsigned long STARTUP_STEP_INTERVAL = 100;
+unsigned long startupStart = 0;
+unsigned long lastStartupFrame = 0;
+byte startupFrame = 0;
+const unsigned long STARTUP_DURATION = 2300;
+const unsigned long STARTUP_FRAME_INTERVAL = 120;
 
-// -------------------- Edit mode ------------------------------
-enum EditField {
-  EDIT_HOUR,
-  EDIT_MINUTE
-};
-
+enum EditField { EDIT_HOUR, EDIT_MINUTE };
 bool editMode = false;
 EditField editField = EDIT_HOUR;
-uint8_t editHour = 0;
-uint8_t editMinute = 0;
-bool editBlinkVisible = true;
+byte editHour = 0;
+byte editMinute = 0;
+bool editVisible = true;
 unsigned long lastBlink = 0;
 const unsigned long BLINK_INTERVAL = 350;
 
-// -------------------- Button 2 click detection ---------------
-// Specification: 1, 2 or 3 presses inside one second.
-const unsigned long MULTI_CLICK_WINDOW = 1000;
-uint8_t modeClickCount = 0;
-unsigned long lastModeClickTime = 0;
+struct Button {
+  byte pin;
+  bool raw;
+  bool stable;
+  unsigned long changedAt;
+};
+
+Button buttonPower = {PIN_BUTTON_POWER, HIGH, HIGH, 0};
+Button buttonMode  = {PIN_BUTTON_MODE, HIGH, HIGH, 0};
+Button buttonPlus  = {PIN_BUTTON_PLUS, HIGH, HIGH, 0};
+Button buttonMinus = {PIN_BUTTON_MINUS, HIGH, HIGH, 0};
 
 const unsigned long DEBOUNCE_MS = 35;
+const unsigned long MODE_WINDOW_MS = 1000;
+byte modeClicks = 0;
+unsigned long modeDeadline = 0;
 
-struct ButtonState {
-  uint8_t pin;
-  bool lastReading;
-  bool stableState;
-  unsigned long lastChange;
-};
-
-ButtonState buttonPower = {PIN_BUTTON_POWER, HIGH, HIGH, 0};
-ButtonState buttonPlus  = {PIN_BUTTON_PLUS, HIGH, HIGH, 0};
-ButtonState buttonMinus = {PIN_BUTTON_MINUS, HIGH, HIGH, 0};
-ButtonState buttonMode  = {PIN_BUTTON_MODE, HIGH, HIGH, 0};
-
-// -------------------- Buzzer melody --------------------------
 struct Note {
-  uint16_t frequency;
-  uint16_t duration;
+  unsigned int frequency;
+  unsigned int duration;
 };
 
-const Note startupMelody[] = {
+const Note STARTUP_MELODY[] = {
   {523, 120}, {659, 120}, {784, 120}, {1047, 220},
-  {784, 120}, {659, 120}, {523, 250}
+  {784, 120}, {659, 120}, {523, 260}
 };
-const uint8_t STARTUP_MELODY_COUNT = sizeof(startupMelody) / sizeof(startupMelody[0]);
-uint8_t melodyIndex = 0;
-unsigned long melodyNextTime = 0;
+const byte STARTUP_MELODY_COUNT = sizeof(STARTUP_MELODY) / sizeof(STARTUP_MELODY[0]);
+byte melodyIndex = 0;
+unsigned long melodyNext = 0;
 
-// ============================================================
-// Utility
-// ============================================================
-uint8_t bcdToDec(uint8_t value) {
+byte bcdToDec(byte value) {
   return ((value >> 4) * 10) + (value & 0x0F);
 }
 
-uint8_t decToBcd(uint8_t value) {
+byte decToBcd(byte value) {
   return ((value / 10) << 4) | (value % 10);
 }
 
-// ============================================================
-// MAX7219
-// ============================================================
-void maxWrite(uint8_t reg, uint8_t value) {
+void maxWrite(byte reg, byte value) {
   digitalWrite(PIN_MAX_CS, LOW);
-  shiftOut(PIN_MAX_DATA, PIN_MAX_CLOCK, MSBFIRST, reg);
-  shiftOut(PIN_MAX_DATA, PIN_MAX_CLOCK, MSBFIRST, value);
+  shiftOut(PIN_MAX_DATA, PIN_CLOCK, MSBFIRST, reg);
+  shiftOut(PIN_MAX_DATA, PIN_CLOCK, MSBFIRST, value);
   digitalWrite(PIN_MAX_CS, HIGH);
 }
 
 void maxClear() {
-  for (uint8_t digit = 1; digit <= 8; digit++) {
-    maxWrite(digit, 0x00);
+  for (byte reg = 1; reg <= 8; reg++) {
+    maxWrite(reg, 0x00);
   }
 }
 
 void maxInit() {
   pinMode(PIN_MAX_CS, OUTPUT);
   pinMode(PIN_MAX_DATA, OUTPUT);
-  pinMode(PIN_MAX_CLOCK, OUTPUT);
+  pinMode(PIN_CLOCK, OUTPUT);
 
   digitalWrite(PIN_MAX_CS, HIGH);
+  digitalWrite(PIN_CLOCK, LOW);
 
   maxWrite(MAX_REG_DISPLAYTEST, 0x00);
   maxWrite(MAX_REG_DECODE, 0x00);
@@ -168,117 +148,95 @@ void maxInit() {
   maxClear();
 }
 
-void maxSetDigit(uint8_t digitIndex, uint8_t mask) {
-  if (digitIndex > 3) return;
-  maxWrite(digitIndex + 1, mask);
+void maxDigit(byte index, byte segments) {
+  if (index > 3) return;
+  maxWrite(index + 1, segments);
 }
 
-// ============================================================
-// Colon
-// ============================================================
-void setColon(bool state) {
-  digitalWrite(PIN_COLON, state ? HIGH : LOW);
+void displayHHMM(byte h, byte m) {
+  maxDigit(0, DIGIT_MASK[h / 10]);
+  maxDigit(1, DIGIT_MASK[h % 10]);
+  maxDigit(2, DIGIT_MASK[m / 10]);
+  maxDigit(3, DIGIT_MASK[m % 10]);
 }
 
-// ============================================================
-// Display
-// ============================================================
-void displayTime(uint8_t hour, uint8_t minute) {
-  uint8_t hTens = hour / 10;
-  uint8_t hUnits = hour % 10;
-  uint8_t mTens = minute / 10;
-  uint8_t mUnits = minute % 10;
+void displayEdit() {
+  byte hTens = editHour / 10;
+  byte hUnits = editHour % 10;
+  byte mTens = editMinute / 10;
+  byte mUnits = editMinute % 10;
 
-  if (!editMode || editField != EDIT_HOUR || editBlinkVisible) {
-    maxSetDigit(0, DIGIT_MASKS[hTens]);
-    maxSetDigit(1, DIGIT_MASKS[hUnits]);
+  if (editField == EDIT_HOUR && !editVisible) {
+    maxDigit(0, 0);
+    maxDigit(1, 0);
   } else {
-    maxSetDigit(0, 0x00);
-    maxSetDigit(1, 0x00);
+    maxDigit(0, DIGIT_MASK[hTens]);
+    maxDigit(1, DIGIT_MASK[hUnits]);
   }
 
-  if (!editMode || editField != EDIT_MINUTE || editBlinkVisible) {
-    maxSetDigit(2, DIGIT_MASKS[mTens]);
-    maxSetDigit(3, DIGIT_MASKS[mUnits]);
+  if (editField == EDIT_MINUTE && !editVisible) {
+    maxDigit(2, 0);
+    maxDigit(3, 0);
   } else {
-    maxSetDigit(2, 0x00);
-    maxSetDigit(3, 0x00);
+    maxDigit(2, DIGIT_MASK[mTens]);
+    maxDigit(3, DIGIT_MASK[mUnits]);
   }
-
-  setColon(true);
 }
 
-void displayStartupFrame(uint8_t step) {
-  uint8_t mask = 0;
-
-  if (step > 0) mask |= SEG_A;
-  if (step > 1) mask |= SEG_B;
-  if (step > 2) mask |= SEG_C;
-  if (step > 3) mask |= SEG_D;
-  if (step > 4) mask |= SEG_E;
-  if (step > 5) mask |= SEG_F;
-  if (step > 6) mask |= SEG_G;
-
-  for (uint8_t i = 0; i < 4; i++) {
-    maxSetDigit(i, mask);
-  }
-
-  setColon(step % 2 == 0);
+void setColon(bool on) {
+  digitalWrite(PIN_COLON, on ? HIGH : LOW);
 }
 
-// ============================================================
-// DS3231
-// ============================================================
-void rtcRead() {
+bool rtcReadTime() {
   Wire.beginTransmission(RTC_ADDRESS);
   Wire.write(0x00);
-  if (Wire.endTransmission() != 0) return;
+  if (Wire.endTransmission() != 0) return false;
 
-  if (Wire.requestFrom(RTC_ADDRESS, (uint8_t)3) != 3) return;
+  if (Wire.requestFrom(RTC_ADDRESS, (byte)3) != 3) return false;
 
-  rtcSecond = bcdToDec(Wire.read() & 0x7F);
-  rtcMinute = bcdToDec(Wire.read() & 0x7F);
-  rtcHour = bcdToDec(Wire.read() & 0x3F);
+  secondNow = bcdToDec(Wire.read() & 0x7F);
+  minuteNow = bcdToDec(Wire.read() & 0x7F);
+  hourNow = bcdToDec(Wire.read() & 0x3F);
+
+  if (hourNow > 23 || minuteNow > 59 || secondNow > 59) return false;
+  return true;
 }
 
-void rtcSetTime(uint8_t hour, uint8_t minute, uint8_t second) {
+bool rtcWriteTime(byte h, byte m, byte s) {
+  if (h > 23 || m > 59 || s > 59) return false;
+
   Wire.beginTransmission(RTC_ADDRESS);
   Wire.write(0x00);
-  Wire.write(decToBcd(second));
-  Wire.write(decToBcd(minute));
-  Wire.write(decToBcd(hour));
-  Wire.endTransmission();
+  Wire.write(decToBcd(s));
+  Wire.write(decToBcd(m));
+  Wire.write(decToBcd(h));
+  return Wire.endTransmission() == 0;
 }
 
-// ============================================================
-// 74HC595 contour driver
-// ============================================================
-void clearContourRegisters() {
-  for (uint8_t i = 0; i < SHIFT_REG_COUNT; i++) {
-    contourRegisters[i] = 0;
+void clearContour() {
+  for (byte i = 0; i < SHIFT_REG_COUNT; i++) {
+    contourData[i] = 0;
   }
 }
 
-void setContourGroup(uint8_t group, bool state) {
+void setContourGroup(byte group, bool on) {
   if (group >= CONTOUR_GROUPS) return;
 
-  uint8_t chip = group / 8;
-  uint8_t bit = group % 8;
+  byte chip = group / 8;
+  byte bit = group % 8;
 
-  if (state) {
-    contourRegisters[chip] |= (1 << bit);
+  if (on) {
+    contourData[chip] |= (byte)(1 << bit);
   } else {
-    contourRegisters[chip] &= ~(1 << bit);
+    contourData[chip] &= (byte)~(1 << bit);
   }
 }
 
-void writeContourRegisters() {
+void writeContour() {
   digitalWrite(PIN_595_LATCH, LOW);
 
-  // 74HC595 #1 is closest to Arduino DS.
-  // Send #7 first so the last 8 bits arrive in #1.
-  for (int8_t chip = SHIFT_REG_COUNT - 1; chip >= 0; chip--) {
-    shiftOut(PIN_595_DATA, PIN_595_CLOCK, LSBFIRST, contourRegisters[chip]);
+  for (int chip = SHIFT_REG_COUNT - 1; chip >= 0; chip--) {
+    shiftOut(PIN_595_DATA, PIN_CLOCK, LSBFIRST, contourData[chip]);
   }
 
   digitalWrite(PIN_595_LATCH, HIGH);
@@ -287,79 +245,118 @@ void writeContourRegisters() {
 void contourInit() {
   pinMode(PIN_595_DATA, OUTPUT);
   pinMode(PIN_595_LATCH, OUTPUT);
-  pinMode(PIN_595_CLOCK, OUTPUT);
+  pinMode(PIN_CLOCK, OUTPUT);
 
-  digitalWrite(PIN_595_LATCH, LOW);
-  clearContourRegisters();
-  writeContourRegisters();
+  clearContour();
+  writeContour();
 }
 
-void updateContourAnimation() {
+void updateContour() {
   if (!watchOn) return;
   if (millis() - lastContourUpdate < CONTOUR_INTERVAL) return;
 
   lastContourUpdate = millis();
 
-  clearContourRegisters();
-  setContourGroup(contourPosition, true);
-  writeContourRegisters();
+  clearContour();
 
-  contourPosition++;
-  if (contourPosition >= CONTOUR_GROUPS) {
-    contourPosition = 0;
+  byte group = contourPosition + (contourColor * GROUPS_PER_COLOR);
+  setContourGroup(group, true);
+  writeContour();
+
+  contourColor++;
+  if (contourColor >= 3) {
+    contourColor = 0;
+    contourPosition++;
+    if (contourPosition >= GROUPS_PER_COLOR) contourPosition = 0;
   }
-}
-
-// ============================================================
-// Buzzer
-// ============================================================
-void startStartupMelody() {
-  melodyIndex = 0;
-  melodyNextTime = 0;
-}
-
-void updateStartupMelody() {
-  if (!startupActive) {
-    noTone(PIN_BUZZER);
-    return;
-  }
-
-  unsigned long now = millis();
-  if (now < melodyNextTime) return;
-
-  if (melodyIndex >= STARTUP_MELODY_COUNT) {
-    noTone(PIN_BUZZER);
-    melodyNextTime = now + 100000UL;
-    return;
-  }
-
-  tone(PIN_BUZZER, startupMelody[melodyIndex].frequency, startupMelody[melodyIndex].duration - 10);
-  melodyNextTime = now + startupMelody[melodyIndex].duration;
-  melodyIndex++;
-}
-
-void beepForDigit(uint8_t digit) {
-  static const uint16_t frequencies[10] = {
-    262, 294, 330, 349, 392, 440, 494, 523, 587, 659
-  };
-  tone(PIN_BUZZER, frequencies[digit % 10], 70);
 }
 
 void beepAction() {
-  tone(PIN_BUZZER, 880, 55);
+  tone(PIN_BUZZER, 880, 60);
 }
 
-// ============================================================
-// Startup animation
-// ============================================================
-void startStartup() {
+void beepDigit(byte digit) {
+  const unsigned int frequencies[10] = {
+    262, 294, 330, 349, 392, 440, 494, 523, 587, 659
+  };
+  tone(PIN_BUZZER, frequencies[digit % 10], 75);
+}
+
+void startMelody() {
+  melodyIndex = 0;
+  melodyNext = 0;
+}
+
+void updateMelody() {
+  if (!startupActive) return;
+
+  unsigned long now = millis();
+  if (now < melodyNext) return;
+
+  if (melodyIndex >= STARTUP_MELODY_COUNT) {
+    noTone(PIN_BUZZER);
+    melodyNext = now + 100000UL;
+    return;
+  }
+
+  tone(PIN_BUZZER,
+       STARTUP_MELODY[melodyIndex].frequency,
+       STARTUP_MELODY[melodyIndex].duration - 10);
+
+  melodyNext = now + STARTUP_MELODY[melodyIndex].duration;
+  melodyIndex++;
+}
+
+void displaySplash(byte frame) {
+  byte mask = 0;
+
+  switch (frame % 8) {
+    case 0: mask = SEG_A; break;
+    case 1: mask = SEG_B; break;
+    case 2: mask = SEG_C; break;
+    case 3: mask = SEG_D; break;
+    case 4: mask = SEG_E; break;
+    case 5: mask = SEG_F; break;
+    case 6: mask = SEG_G; break;
+    case 7: mask = SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F | SEG_G; break;
+  }
+
+  maxDigit(0, mask);
+  maxDigit(1, mask);
+  maxDigit(2, mask);
+  maxDigit(3, mask);
+  setColon((frame % 2) == 0);
+}
+
+void startWatch() {
+  watchOn = true;
+  editMode = false;
   startupActive = true;
-  startupStarted = millis();
-  lastStartupStep = 0;
-  startupStep = 0;
+  startupStart = millis();
+  lastStartupFrame = 0;
+  startupFrame = 0;
   contourPosition = 0;
-  startStartupMelody();
+  contourColor = 0;
+  startMelody();
+
   maxWrite(MAX_REG_SHUTDOWN, 0x01);
+  maxClear();
+  clearContour();
+  writeContour();
+}
+
+void stopWatch() {
+  watchOn = false;
+  startupActive = false;
+  editMode = false;
+  modeClicks = 0;
+  noTone(PIN_BUZZER);
+
+  maxClear();
+  setColon(false);
+  clearContour();
+  writeContour();
+  maxWrite(MAX_REG_SHUTDOWN, 0x00);
 }
 
 void updateStartup() {
@@ -367,173 +364,160 @@ void updateStartup() {
 
   unsigned long now = millis();
 
-  if (now - lastStartupStep >= STARTUP_STEP_INTERVAL) {
-    lastStartupStep = now;
-    if (startupStep < 7) startupStep++;
-    displayStartupFrame(startupStep);
+  if (now - lastStartupFrame >= STARTUP_FRAME_INTERVAL) {
+    lastStartupFrame = now;
+    displaySplash(startupFrame);
+    startupFrame++;
   }
 
-  if (now - startupStarted >= STARTUP_DURATION) {
+  if (now - startupStart >= STARTUP_DURATION) {
     startupActive = false;
     noTone(PIN_BUZZER);
-    rtcRead();
-    displayTime(rtcHour, rtcMinute);
+
+    if (!rtcReadTime()) {
+      hourNow = 0;
+      minuteNow = 0;
+      secondNow = 0;
+    }
+
+    displayHHMM(hourNow, minuteNow);
+    setColon(true);
   }
 }
 
-// ============================================================
-// Buttons
-// ============================================================
-bool buttonPressed(ButtonState &button) {
+bool pressed(Button &button) {
   bool reading = digitalRead(button.pin);
 
-  if (reading != button.lastReading) {
-    button.lastChange = millis();
-    button.lastReading = reading;
+  if (reading != button.raw) {
+    button.raw = reading;
+    button.changedAt = millis();
   }
 
-  if ((millis() - button.lastChange) > DEBOUNCE_MS && reading != button.stableState) {
-    button.stableState = reading;
-    if (button.stableState == LOW) {
-      return true;
-    }
+  if (millis() - button.changedAt >= DEBOUNCE_MS && reading != button.stable) {
+    button.stable = reading;
+    if (button.stable == LOW) return true;
   }
 
   return false;
 }
 
 void resetClock() {
-  rtcSetTime(0, 0, 0);
-  rtcHour = 0;
-  rtcMinute = 0;
-  rtcSecond = 0;
-  editHour = 0;
-  editMinute = 0;
+  if (rtcWriteTime(0, 0, 0)) {
+    hourNow = 0;
+    minuteNow = 0;
+    secondNow = 0;
+  }
   beepAction();
+  displayHHMM(hourNow, minuteNow);
 }
 
 void enterEditMode() {
-  rtcRead();
-  editHour = rtcHour;
-  editMinute = rtcMinute;
+  if (!rtcReadTime()) return;
+
+  editHour = hourNow;
+  editMinute = minuteNow;
   editField = EDIT_HOUR;
+  editVisible = true;
   editMode = true;
-  editBlinkVisible = true;
   lastBlink = millis();
-  noTone(PIN_BUZZER);
+  displayEdit();
   beepAction();
 }
 
 void validateEditMode() {
-  rtcSetTime(editHour, editMinute, 0);
-  rtcHour = editHour;
-  rtcMinute = editMinute;
-  rtcSecond = 0;
+  if (rtcWriteTime(editHour, editMinute, 0)) {
+    hourNow = editHour;
+    minuteNow = editMinute;
+    secondNow = 0;
+  }
+
   editMode = false;
-  editBlinkVisible = true;
-  displayTime(rtcHour, rtcMinute);
+  editVisible = true;
+  displayHHMM(hourNow, minuteNow);
+  setColon(true);
   beepAction();
 }
 
 void processModeClicks() {
-  if (modeClickCount == 0) return;
-
-  unsigned long now = millis();
-  if (now - lastModeClickTime < MULTI_CLICK_WINDOW) return;
+  if (modeClicks == 0) return;
+  if (millis() < modeDeadline) return;
 
   if (!editMode) {
-    if (modeClickCount == 1) {
+    if (modeClicks == 1) {
       resetClock();
-    } else if (modeClickCount == 2) {
+    } else if (modeClicks == 2) {
       enterEditMode();
     }
   } else {
-    if (modeClickCount == 1) {
-      // In edit mode, one press switches HOURS <-> MINUTES.
+    if (modeClicks == 1) {
       editField = (editField == EDIT_HOUR) ? EDIT_MINUTE : EDIT_HOUR;
-      editBlinkVisible = true;
-      lastBlink = now;
+      editVisible = true;
+      lastBlink = millis();
+      displayEdit();
       beepAction();
-    } else if (modeClickCount == 3) {
+    } else if (modeClicks == 3) {
       validateEditMode();
     }
   }
 
-  modeClickCount = 0;
+  modeClicks = 0;
 }
 
 void handleButtons() {
-  if (buttonPressed(buttonPower)) {
-    watchOn = !watchOn;
-
-    if (watchOn) {
-      startStartup();
-    } else {
-      startupActive = false;
-      editMode = false;
-      noTone(PIN_BUZZER);
-      maxWrite(MAX_REG_SHUTDOWN, 0x00);
-      maxClear();
-      setColon(false);
-      clearContourRegisters();
-      writeContourRegisters();
-    }
+  if (pressed(buttonPower)) {
+    if (watchOn) stopWatch();
+    else startWatch();
   }
 
   if (!watchOn || startupActive) return;
 
-  if (buttonPressed(buttonMode)) {
-    unsigned long now = millis();
-
-    modeClickCount++;
-    lastModeClickTime = now;
+  if (pressed(buttonMode)) {
+    modeClicks++;
+    if (modeClicks > 3) modeClicks = 3;
+    modeDeadline = millis() + MODE_WINDOW_MS;
   }
 
   if (editMode) {
-    if (buttonPressed(buttonPlus)) {
+    if (pressed(buttonPlus)) {
       if (editField == EDIT_HOUR) {
         editHour = (editHour + 1) % 24;
-        beepForDigit(editHour % 10);
+        beepDigit(editHour % 10);
       } else {
         editMinute = (editMinute + 1) % 60;
-        beepForDigit(editMinute % 10);
+        beepDigit(editMinute % 10);
       }
-      editBlinkVisible = true;
+      editVisible = true;
       lastBlink = millis();
+      displayEdit();
     }
 
-    if (buttonPressed(buttonMinus)) {
+    if (pressed(buttonMinus)) {
       if (editField == EDIT_HOUR) {
         editHour = (editHour == 0) ? 23 : editHour - 1;
-        beepForDigit(editHour % 10);
+        beepDigit(editHour % 10);
       } else {
         editMinute = (editMinute == 0) ? 59 : editMinute - 1;
-        beepForDigit(editMinute % 10);
+        beepDigit(editMinute % 10);
       }
-      editBlinkVisible = true;
+      editVisible = true;
       lastBlink = millis();
+      displayEdit();
     }
   }
 
   processModeClicks();
 }
 
-// ============================================================
-// Edit blink
-// ============================================================
 void updateEditBlink() {
-  if (!editMode || startupActive) return;
+  if (!editMode) return;
 
   if (millis() - lastBlink >= BLINK_INTERVAL) {
     lastBlink = millis();
-    editBlinkVisible = !editBlinkVisible;
-    displayTime(editHour, editMinute);
+    editVisible = !editVisible;
+    displayEdit();
   }
 }
 
-// ============================================================
-// Setup
-// ============================================================
 void setup() {
   pinMode(PIN_BUTTON_POWER, INPUT_PULLUP);
   pinMode(PIN_BUTTON_MODE, INPUT_PULLUP);
@@ -547,33 +531,28 @@ void setup() {
   Wire.begin();
   maxInit();
   contourInit();
-  rtcRead();
+  rtcReadTime();
 
   watchOn = false;
   startupActive = false;
   editMode = false;
 }
 
-// ============================================================
-// Loop
-// ============================================================
 void loop() {
   handleButtons();
 
   if (!watchOn) return;
 
-  updateStartupMelody();
+  updateMelody();
   updateStartup();
-  updateContourAnimation();
+  updateContour();
 
   if (startupActive) return;
 
-  if (millis() - lastRtcRead >= 250) {
-    lastRtcRead = millis();
-
-    if (!editMode) {
-      rtcRead();
-      displayTime(rtcHour, rtcMinute);
+  if (!editMode && millis() - lastRTCRead >= RTC_INTERVAL) {
+    lastRTCRead = millis();
+    if (rtcReadTime()) {
+      displayHHMM(hourNow, minuteNow);
     }
   }
 

@@ -4,6 +4,7 @@
 // NOVAWATCH
 // Arduino Nano + MAX7219 + DS3231 + 7x74HC595 + 7xULN2803A
 // Alimentation principale : 12 V DC
+// Affichage : 114 LED
 // Contour : 40 groupes x 4 LED = 160 LED
 // ============================================================
 
@@ -14,11 +15,11 @@ const byte PIN_BUTTON_MINUS = 5;
 const byte PIN_BUZZER       = 6;
 const byte PIN_COLON        = 7;
 
-const byte PIN_595_DATA  = 8;   // DS pin 14
-const byte PIN_595_LATCH = 9;   // STCP pin 12
-const byte PIN_MAX_CS    = 10;  // LOAD/CS pin 12
-const byte PIN_MAX_DATA  = 11;  // DIN pin 1
-const byte PIN_CLOCK     = 13;  // CLK MAX7219 + SHCP pin 11
+const byte PIN_595_DATA  = 8;
+const byte PIN_595_LATCH = 9;
+const byte PIN_MAX_CS    = 10;
+const byte PIN_MAX_DATA  = 11;
+const byte PIN_CLOCK     = 13;
 
 const byte RTC_ADDRESS = 0x68;
 
@@ -51,15 +52,8 @@ const byte DIGIT_MASK[10] = {
 };
 
 // -------------------- Contour -------------------------------
-// 40 groupes x 4 LED = 160 LED.
-// Un groupe est un ensemble de 4 LED de la meme couleur.
-// La couleur est determinee par le cablage physique du groupe.
-// 7 registres restent dans le cablage : 56 sorties disponibles,
-// dont 40 utilisees et 16 non utilisees.
 const byte SHIFT_REG_COUNT = 7;
 const byte CONTOUR_GROUPS = 40;
-const byte USED_OUTPUTS = CONTOUR_GROUPS;
-
 byte contourData[SHIFT_REG_COUNT] = {0};
 byte contourGroup = 0;
 unsigned long lastContourUpdate = 0;
@@ -122,9 +116,6 @@ const byte STARTUP_MELODY_COUNT = sizeof(STARTUP_MELODY) / sizeof(STARTUP_MELODY
 byte melodyIndex = 0;
 unsigned long melodyNext = 0;
 
-// ============================================================
-// Utilitaires
-// ============================================================
 byte bcdToDec(byte value) {
   return ((value >> 4) * 10) + (value & 0x0F);
 }
@@ -243,24 +234,24 @@ void clearContour() {
 }
 
 void setContourGroup(byte group, bool on) {
-  if (group >= USED_OUTPUTS) return;
+  if (group >= CONTOUR_GROUPS) return;
 
   byte chip = group / 8;
   byte bit = group % 8;
 
-  if (on) {
-    contourData[chip] |= (byte)(1 << bit);
-  } else {
-    contourData[chip] &= (byte)~(1 << bit);
-  }
+  if (on) contourData[chip] |= (byte)(1 << bit);
+  else contourData[chip] &= (byte)~(1 << bit);
 }
 
 void writeContour() {
   digitalWrite(PIN_595_LATCH, LOW);
 
-  // Le #7 est envoye en premier, le #1 en dernier.
+  // IMPORTANT : Q0 doit recevoir le bit 0.
+  // Avec un 74HC595, le premier bit envoyé termine sur Q7.
+  // On envoie donc MSB first pour que le bit 0 finisse sur Q0.
+  // Le dernier CI de la chaîne doit être envoyé en premier.
   for (int chip = SHIFT_REG_COUNT - 1; chip >= 0; chip--) {
-    shiftOut(PIN_595_DATA, PIN_CLOCK, LSBFIRST, contourData[chip]);
+    shiftOut(PIN_595_DATA, PIN_CLOCK, MSBFIRST, contourData[chip]);
   }
 
   digitalWrite(PIN_595_LATCH, HIGH);
@@ -286,9 +277,7 @@ void updateContour() {
   writeContour();
 
   contourGroup++;
-  if (contourGroup >= CONTOUR_GROUPS) {
-    contourGroup = 0;
-  }
+  if (contourGroup >= CONTOUR_GROUPS) contourGroup = 0;
 }
 
 // ============================================================
@@ -331,7 +320,7 @@ void updateMelody() {
 }
 
 // ============================================================
-// Splash / demarrage
+// Splash / démarrage
 // ============================================================
 void displaySplash(byte frame) {
   byte mask = 0;
@@ -547,9 +536,6 @@ void updateEditBlink() {
   }
 }
 
-// ============================================================
-// Setup
-// ============================================================
 void setup() {
   pinMode(PIN_BUTTON_POWER, INPUT_PULLUP);
   pinMode(PIN_BUTTON_MODE, INPUT_PULLUP);
@@ -570,9 +556,6 @@ void setup() {
   editMode = false;
 }
 
-// ============================================================
-// Loop principal
-// ============================================================
 void loop() {
   handleButtons();
 

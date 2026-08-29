@@ -3,7 +3,8 @@
 // ============================================================
 // NOVAWATCH
 // Arduino Nano + MAX7219 + DS3231 + 7x74HC595 + 7xULN2803A
-// Entree alimentation : 12 V DC
+// Alimentation principale : 12 V DC
+// Contour : 40 groupes x 4 LED = 160 LED
 // ============================================================
 
 const byte PIN_BUTTON_POWER = 2;
@@ -13,14 +14,15 @@ const byte PIN_BUTTON_MINUS = 5;
 const byte PIN_BUZZER       = 6;
 const byte PIN_COLON        = 7;
 
-const byte PIN_595_DATA  = 8;
-const byte PIN_595_LATCH = 9;
-const byte PIN_MAX_CS    = 10;
-const byte PIN_MAX_DATA  = 11;
-const byte PIN_CLOCK     = 13;
+const byte PIN_595_DATA  = 8;   // DS pin 14
+const byte PIN_595_LATCH = 9;   // STCP pin 12
+const byte PIN_MAX_CS    = 10;  // LOAD/CS pin 12
+const byte PIN_MAX_DATA  = 11;  // DIN pin 1
+const byte PIN_CLOCK     = 13;  // CLK MAX7219 + SHCP pin 11
 
 const byte RTC_ADDRESS = 0x68;
 
+// -------------------- MAX7219 -------------------------------
 const byte MAX_REG_DECODE      = 0x09;
 const byte MAX_REG_INTENSITY   = 0x0A;
 const byte MAX_REG_SCANLIMIT   = 0x0B;
@@ -48,22 +50,29 @@ const byte DIGIT_MASK[10] = {
   SEG_A | SEG_B | SEG_C | SEG_D | SEG_F | SEG_G
 };
 
+// -------------------- Contour -------------------------------
+// 40 groupes x 4 LED = 160 LED.
+// Un groupe est un ensemble de 4 LED de la meme couleur.
+// La couleur est determinee par le cablage physique du groupe.
+// 7 registres restent dans le cablage : 56 sorties disponibles,
+// dont 40 utilisees et 16 non utilisees.
 const byte SHIFT_REG_COUNT = 7;
-const byte GROUPS_PER_COLOR = 17;
-const byte CONTOUR_GROUPS = 51;
-byte contourData[SHIFT_REG_COUNT];
+const byte CONTOUR_GROUPS = 40;
+const byte USED_OUTPUTS = CONTOUR_GROUPS;
 
-const unsigned long CONTOUR_INTERVAL = 100;
+byte contourData[SHIFT_REG_COUNT] = {0};
+byte contourGroup = 0;
 unsigned long lastContourUpdate = 0;
-byte contourPosition = 0;
-byte contourColor = 0;
+const unsigned long CONTOUR_INTERVAL = 100;
 
+// -------------------- RTC -----------------------------------
 byte hourNow = 0;
 byte minuteNow = 0;
 byte secondNow = 0;
 unsigned long lastRTCRead = 0;
 const unsigned long RTC_INTERVAL = 500;
 
+// -------------------- Etats ---------------------------------
 bool watchOn = false;
 bool startupActive = false;
 unsigned long startupStart = 0;
@@ -81,6 +90,7 @@ bool editVisible = true;
 unsigned long lastBlink = 0;
 const unsigned long BLINK_INTERVAL = 350;
 
+// -------------------- Boutons -------------------------------
 struct Button {
   byte pin;
   bool raw;
@@ -98,6 +108,7 @@ const unsigned long MODE_WINDOW_MS = 1000;
 byte modeClicks = 0;
 unsigned long modeDeadline = 0;
 
+// -------------------- Buzzer --------------------------------
 struct Note {
   unsigned int frequency;
   unsigned int duration;
@@ -111,6 +122,9 @@ const byte STARTUP_MELODY_COUNT = sizeof(STARTUP_MELODY) / sizeof(STARTUP_MELODY
 byte melodyIndex = 0;
 unsigned long melodyNext = 0;
 
+// ============================================================
+// Utilitaires
+// ============================================================
 byte bcdToDec(byte value) {
   return ((value >> 4) * 10) + (value & 0x0F);
 }
@@ -119,6 +133,9 @@ byte decToBcd(byte value) {
   return ((value / 10) << 4) | (value % 10);
 }
 
+// ============================================================
+// MAX7219
+// ============================================================
 void maxWrite(byte reg, byte value) {
   digitalWrite(PIN_MAX_CS, LOW);
   shiftOut(PIN_MAX_DATA, PIN_CLOCK, MSBFIRST, reg);
@@ -167,16 +184,16 @@ void displayEdit() {
   byte mUnits = editMinute % 10;
 
   if (editField == EDIT_HOUR && !editVisible) {
-    maxDigit(0, 0);
-    maxDigit(1, 0);
+    maxDigit(0, 0x00);
+    maxDigit(1, 0x00);
   } else {
     maxDigit(0, DIGIT_MASK[hTens]);
     maxDigit(1, DIGIT_MASK[hUnits]);
   }
 
   if (editField == EDIT_MINUTE && !editVisible) {
-    maxDigit(2, 0);
-    maxDigit(3, 0);
+    maxDigit(2, 0x00);
+    maxDigit(3, 0x00);
   } else {
     maxDigit(2, DIGIT_MASK[mTens]);
     maxDigit(3, DIGIT_MASK[mUnits]);
@@ -187,6 +204,9 @@ void setColon(bool on) {
   digitalWrite(PIN_COLON, on ? HIGH : LOW);
 }
 
+// ============================================================
+// DS3231
+// ============================================================
 bool rtcReadTime() {
   Wire.beginTransmission(RTC_ADDRESS);
   Wire.write(0x00);
@@ -213,14 +233,17 @@ bool rtcWriteTime(byte h, byte m, byte s) {
   return Wire.endTransmission() == 0;
 }
 
+// ============================================================
+// 74HC595 + ULN2803A + contour
+// ============================================================
 void clearContour() {
   for (byte i = 0; i < SHIFT_REG_COUNT; i++) {
-    contourData[i] = 0;
+    contourData[i] = 0x00;
   }
 }
 
 void setContourGroup(byte group, bool on) {
-  if (group >= CONTOUR_GROUPS) return;
+  if (group >= USED_OUTPUTS) return;
 
   byte chip = group / 8;
   byte bit = group % 8;
@@ -235,6 +258,7 @@ void setContourGroup(byte group, bool on) {
 void writeContour() {
   digitalWrite(PIN_595_LATCH, LOW);
 
+  // Le #7 est envoye en premier, le #1 en dernier.
   for (int chip = SHIFT_REG_COUNT - 1; chip >= 0; chip--) {
     shiftOut(PIN_595_DATA, PIN_CLOCK, LSBFIRST, contourData[chip]);
   }
@@ -258,19 +282,18 @@ void updateContour() {
   lastContourUpdate = millis();
 
   clearContour();
-
-  byte group = contourPosition + (contourColor * GROUPS_PER_COLOR);
-  setContourGroup(group, true);
+  setContourGroup(contourGroup, true);
   writeContour();
 
-  contourColor++;
-  if (contourColor >= 3) {
-    contourColor = 0;
-    contourPosition++;
-    if (contourPosition >= GROUPS_PER_COLOR) contourPosition = 0;
+  contourGroup++;
+  if (contourGroup >= CONTOUR_GROUPS) {
+    contourGroup = 0;
   }
 }
 
+// ============================================================
+// Buzzer
+// ============================================================
 void beepAction() {
   tone(PIN_BUZZER, 880, 60);
 }
@@ -307,6 +330,9 @@ void updateMelody() {
   melodyIndex++;
 }
 
+// ============================================================
+// Splash / demarrage
+// ============================================================
 void displaySplash(byte frame) {
   byte mask = 0;
 
@@ -335,8 +361,7 @@ void startWatch() {
   startupStart = millis();
   lastStartupFrame = 0;
   startupFrame = 0;
-  contourPosition = 0;
-  contourColor = 0;
+  contourGroup = 0;
   startMelody();
 
   maxWrite(MAX_REG_SHUTDOWN, 0x01);
@@ -385,6 +410,9 @@ void updateStartup() {
   }
 }
 
+// ============================================================
+// Boutons
+// ============================================================
 bool pressed(Button &button) {
   bool reading = digitalRead(button.pin);
 
@@ -407,6 +435,7 @@ void resetClock() {
     minuteNow = 0;
     secondNow = 0;
   }
+
   beepAction();
   displayHHMM(hourNow, minuteNow);
 }
@@ -518,6 +547,9 @@ void updateEditBlink() {
   }
 }
 
+// ============================================================
+// Setup
+// ============================================================
 void setup() {
   pinMode(PIN_BUTTON_POWER, INPUT_PULLUP);
   pinMode(PIN_BUTTON_MODE, INPUT_PULLUP);
@@ -538,6 +570,9 @@ void setup() {
   editMode = false;
 }
 
+// ============================================================
+// Loop principal
+// ============================================================
 void loop() {
   handleButtons();
 

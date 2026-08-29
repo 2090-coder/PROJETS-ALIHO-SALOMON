@@ -1,169 +1,154 @@
-# NOVAWATCH — Câblage précis V2
+# NOVAWATCH — Câblage précis V2 FINAL
 
-> Document de référence du câblage. Toutes les broches des CI sont écrites avec leur nom réel tel qu'il apparaît sur le composant. L'alimentation d'entrée du projet est de **12 V DC**. Les tensions nécessaires sont ensuite distribuées par un convertisseur abaisseur (buck) adapté.
+Ce document est la référence matérielle du prototype NOVAWATCH.
 
-## 1. Architecture d'alimentation
+## 1. Architecture générale
 
-**Entrée principale : 12 V DC par prise JACK.**
+| Élément | Quantité | Alimentation | Rôle |
+|---|---:|---:|---|
+| Arduino Nano | 1 | 5 V | Contrôleur |
+| MAX7219 DIP-24 | 1 | 5 V | Multiplexage des 4 chiffres |
+| DS3231 | 1 | 5 V | Horloge temps réel |
+| 74HC595 DIP-16 | 7 | 5 V | Commande du contour |
+| ULN2803A DIP-18 | 7 | logique 5 V | Commutation des groupes LED |
+| LED rouge 3 mm affichage | 112 | via MAX7219 | 4 LED par segment |
+| LED rouge 3 mm colon | 2 | via D7 | Séparateur heures/minutes |
+| LED contour | 160 | 12 V | 40 groupes de 4 |
+| Boutons poussoirs | 4 | logique | ON/OFF, MODE/RESET, +, - |
+| Buzzer passif | 1 | logique | Sons |
+| Prise JACK DC | 1 | 12 V | Entrée alimentation |
+| Buck 12 V → 5 V | 1 | 12 V entrée | Rail logique 5 V |
 
-Le 12 V ne doit jamais être envoyé directement au MAX7219, au DS3231, au 74HC595 ou aux broches 5 V de l'Arduino Nano.
+**Total LED : 112 + 2 + 160 = 274 LED.**
 
-| Source | Va vers | Tension | Rôle |
-|---|---|---:|---|
-| Prise JACK | Interrupteur/fusible d'entrée | 12 V DC | Entrée principale |
-| Interrupteur/fusible | Buck DC-DC | 12 V DC | Protection + distribution |
-| Buck DC-DC | Rail logique | **5 V DC** | Arduino, MAX7219, DS3231, 74HC595 |
-| Rail 12 V | Résistances + LEDs contour | **12 V DC** | Alimentation des groupes du contour |
-| GND 12 V | GND commun | 0 V | Masse commune du système |
+Le contour est composé de **40 groupes × 4 LED = 160 LED**. Les LED du contour sont des LED séparées par couleur, jamais des LED RGB intégrées.
 
-> Le buck doit être réglé à **5,0 V avant de connecter l'Arduino ou les CI**. Pour le prototype, choisir un buck 12 V → 5 V capable de fournir au moins 3 A avec une marge raisonnable. La puissance finale doit être vérifiée après mesure du courant réel du contour.
+---
 
-## 2. Arduino Nano — tableau principal
+## 2. Alimentation 12 V DC
 
-| Broche Arduino | Va vers | Fonction |
+| Source | Va vers | Tension |
+|---|---|---:|
+| JACK + | Fusible/interrupteur | +12 V |
+| Fusible/interrupteur | Entrée + du buck | +12 V |
+| Fusible/interrupteur | Anodes des LED contour via résistances | +12 V |
+| JACK - | GND commun | 0 V |
+| Buck sortie + | Rail logique | +5 V |
+| Buck sortie - | GND commun | 0 V |
+
+Le buck doit être réglé à **5,0 V avant branchement** de l'Arduino et des CI.
+
+Le GND du 12 V, le GND du buck, l'Arduino, le MAX7219, les 74HC595, les ULN2803A et le DS3231 doivent être communs.
+
+**Ne jamais envoyer 12 V sur la broche 5V de l'Arduino ni sur VCC des CI.**
+
+---
+
+## 3. Arduino Nano
+
+| Broche Nano | Va vers | Fonction |
 |---|---|---|
-| D2 | Bouton 1 | ON/OFF |
-| D3 | Bouton 2 | RESET / MODE / validation |
-| D4 | Bouton 3 | + |
-| D5 | Bouton 4 | - |
-| D6 | Buzzer passif | Son |
-| D7 | Colon `:` via résistances | Deux LED rouges du colon |
-| D8 | **DS (pin 14) du 74HC595 #1** | DATA contour |
-| D9 | **STCP (pin 12) des 74HC595 #1 à #7** | LATCH / transfert |
-| D10 | **LOAD/CS (pin 12) du MAX7219** | Validation afficheur |
-| D11 | **DIN (pin 1) du MAX7219** | DATA afficheur |
-| D12 | Libre | Extension future |
-| D13 | **CLK (pin 13) du MAX7219 + SHCP (pin 11) des 74HC595 #1 à #7** | CLOCK partagé |
-| A4 | SDA du DS3231 | I2C DATA |
-| A5 | SCL du DS3231 | I2C CLOCK |
+| D2 | Bouton 1, autre contact → GND | ON/OFF |
+| D3 | Bouton 2, autre contact → GND | RESET / MODE / validation |
+| D4 | Bouton 3, autre contact → GND | + |
+| D5 | Bouton 4, autre contact → GND | - |
+| D6 | Buzzer passif + | Buzzer |
+| D7 | Deux résistances séparées → 2 LED colon | `:` |
+| D8 | DS pin 14 du 74HC595 #1 | DATA contour |
+| D9 | STCP pin 12 des 7 × 74HC595 | LATCH contour |
+| D10 | LOAD/CS pin 12 MAX7219 | CS afficheur |
+| D11 | DIN pin 1 MAX7219 | DATA afficheur |
+| D12 | Libre | Réserve |
+| D13 | CLK pin 13 MAX7219 + SHCP pin 11 des 7 × 74HC595 | CLOCK partagé |
+| A4 | SDA DS3231 | I²C SDA |
+| A5 | SCL DS3231 | I²C SCL |
 | 5V | Rail +5 V | Alimentation logique |
 | GND | Rail GND | Masse commune |
 
-## 3. 74HC595 — nomenclature exacte du CI
+Les boutons utilisent `INPUT_PULLUP` : au repos = HIGH, appui = LOW.
 
-> **Attention : le CI utilisé ici est le 74HC595.** On n'utilise pas les noms génériques `SER`, `LATCH` ou `SRCLK` dans les tableaux de câblage. On utilise les noms visibles sur le CI : **DS, SHCP, STCP, MR, OE, Q0-Q7, Q7S, VCC, GND**.
+---
 
-| Broche | Nom exact sur le CI | Va vers | Fonction |
-|---:|---|---|---|
-| 1 | **Q1** | Entrée ULN2803A correspondante | Sortie logique |
-| 2 | **Q2** | Entrée ULN2803A correspondante | Sortie logique |
-| 3 | **Q3** | Entrée ULN2803A correspondante | Sortie logique |
-| 4 | **Q4** | Entrée ULN2803A correspondante | Sortie logique |
-| 5 | **Q5** | Entrée ULN2803A correspondante | Sortie logique |
-| 6 | **Q6** | Entrée ULN2803A correspondante | Sortie logique |
-| 7 | **Q7** | Entrée ULN2803A correspondante | Sortie logique |
-| 8 | **GND** | GND commun | Masse |
-| 9 | **Q7S** | **DS (pin 14) du 74HC595 suivant** | Chaînage série |
-| 10 | **MR** | +5 V | Reset maintenu inactif |
-| 11 | **SHCP** | Arduino D13 | Horloge du registre |
-| 12 | **STCP** | Arduino D9 | Transfert registre → sorties |
-| 13 | **OE** | GND | Sorties activées |
-| 14 | **DS** | Arduino D8 ou Q7S du CI précédent | Entrée série DATA |
-| 15 | **Q0** | Entrée ULN2803A correspondante | Sortie logique |
-| 16 | **VCC** | +5 V | Alimentation |
+## 4. MAX7219 DIP-24
 
-### 74HC595 #1 à #7 — commandes communes
-
-| Broche 74HC595 | Nom exact | Connexion |
+| Pin | Nom réel | Connexion |
 |---:|---|---|
-| 8 | GND | GND commun |
-| 10 | MR | +5 V |
-| 11 | SHCP | Arduino D13, commun aux 7 CI |
-| 12 | STCP | Arduino D9, commun aux 7 CI |
-| 13 | OE | GND |
-| 16 | VCC | +5 V |
+| 1 | DIN | Arduino D11 |
+| 2 | DIG0 | Cathodes communes chiffre 1 |
+| 3 | DIG4 | NC |
+| 4 | GND | GND |
+| 5 | DIG6 | NC |
+| 6 | DIG2 | Cathodes communes chiffre 3 |
+| 7 | DIG3 | Cathodes communes chiffre 4 |
+| 8 | DIG7 | NC |
+| 9 | GND | GND |
+| 10 | DIG5 | NC |
+| 11 | DIG1 | Cathodes communes chiffre 2 |
+| 12 | LOAD/CS | Arduino D10 |
+| 13 | CLK | Arduino D13 |
+| 14 | SEG A | Anodes segment A via résistances |
+| 15 | SEG F | Anodes segment F via résistances |
+| 16 | SEG B | Anodes segment B via résistances |
+| 17 | SEG G | Anodes segment G via résistances |
+| 18 | ISET | RSET vers +5 V |
+| 19 | V+ | +5 V |
+| 20 | SEG C | Anodes segment C via résistances |
+| 21 | SEG E | Anodes segment E via résistances |
+| 22 | SEG DP | NC |
+| 23 | SEG D | Anodes segment D via résistances |
+| 24 | DOUT | NC |
 
-### Chaînage exact des données
+### MAX7219 — composants associés
 
-| Source | Va vers | Fonction |
-|---|---|---|
-| Arduino D8 | DS pin 14 du 74HC595 #1 | Premier bit envoyé |
-| Q7S pin 9 du #1 | DS pin 14 du #2 | Chaînage |
-| Q7S pin 9 du #2 | DS pin 14 du #3 | Chaînage |
-| Q7S pin 9 du #3 | DS pin 14 du #4 | Chaînage |
-| Q7S pin 9 du #4 | DS pin 14 du #5 | Chaînage |
-| Q7S pin 9 du #5 | DS pin 14 du #6 | Chaînage |
-| Q7S pin 9 du #6 | DS pin 14 du #7 | Chaînage |
-| Q7S pin 9 du #7 | Non connecté | Fin de chaîne |
+| Composant | Connexion |
+|---|---|
+| 100 nF | entre V+ et GND, au plus près du MAX7219 |
+| 10 µF | entre V+ et GND, au plus près du MAX7219 |
+| RSET | ISET pin 18 → résistance → +5 V |
 
-## 4. MAX7219 DIP-24 — brochage précis
+Pour ce prototype avec 4 LED par segment, une valeur de départ raisonnable est **RSET = 9,53 kΩ 1 %**, à valider par mesure et selon la luminosité souhaitée. Ne pas supprimer RSET.
 
-| Broche MAX7219 | Nom | Va vers | Fonction |
-|---:|---|---|---|
-| 1 | **DIN** | Arduino D11 | Données série |
-| 2 | **DIG0** | Cathodes communes du chiffre 1 | Dizaine des heures |
-| 3 | **DIG4** | Non connecté | Non utilisé |
-| 4 | **GND** | GND commun | Masse |
-| 5 | **DIG6** | Non connecté | Non utilisé |
-| 6 | **DIG2** | Cathodes communes du chiffre 3 | Dizaine des minutes |
-| 7 | **DIG3** | Cathodes communes du chiffre 4 | Unité des minutes |
-| 8 | **DIG7** | Non connecté | Non utilisé |
-| 9 | **GND** | GND commun | Masse |
-| 10 | **DIG5** | Non connecté | Non utilisé |
-| 11 | **DIG1** | Cathodes communes du chiffre 2 | Unité des heures |
-| 12 | **LOAD/CS** | Arduino D10 | Validation |
-| 13 | **CLK** | Arduino D13 | Horloge |
-| 14 | **SEG A** | Anodes des LED A via résistances | Segment A |
-| 15 | **SEG F** | Anodes des LED F via résistances | Segment F |
-| 16 | **SEG B** | Anodes des LED B via résistances | Segment B |
-| 17 | **SEG G** | Anodes des LED G via résistances | Segment G |
-| 18 | **ISET** | RSET puis +5 V | Réglage du courant |
-| 19 | **V+** | +5 V | Alimentation |
-| 20 | **SEG C** | Anodes des LED C via résistances | Segment C |
-| 21 | **SEG E** | Anodes des LED E via résistances | Segment E |
-| 22 | **SEG DP** | Non connecté | Pas de point décimal |
-| 23 | **SEG D** | Anodes des LED D via résistances | Segment D |
-| 24 | **DOUT** | Non connecté en V1 | Extension éventuelle |
+---
 
-### Découplage MAX7219
-
-| Composant | Va entre | Position |
-|---|---|---|
-| 100 nF | +5 V ↔ GND | Au plus près du MAX7219 |
-| 10 µF | +5 V ↔ GND | Au plus près du MAX7219 |
-| RSET | ISET ↔ +5 V | Valeur à déterminer selon le courant cible |
-
-## 5. Afficheur 7 segments artisanal
+## 5. Affichage 7 segments artisanal
 
 | Élément | Quantité |
 |---|---:|
-| LED rouge 3 mm par segment | 4 |
-| Segments par chiffre | 7 |
-| LED par chiffre | 28 |
 | Chiffres | 4 |
-| LED des segments | 112 |
-| LED rouges du colon `:` | 2 |
+| Segments par chiffre | 7 |
+| LED rouges par segment | 4 |
+| LED par chiffre | 28 |
+| LED segments | 112 |
+| LED colon | 2 |
 | Total affichage | **114** |
 | DP | **Non utilisé** |
 
-### Correspondance des segments
+### Correspondance
 
-| Sortie MAX7219 | Segment physique |
+| MAX7219 | Segment physique |
 |---|---|
-| SEG A | Supérieur |
-| SEG B | Supérieur droit |
-| SEG C | Inférieur droit |
-| SEG D | Inférieur |
-| SEG E | Inférieur gauche |
-| SEG F | Supérieur gauche |
-| SEG G | Central |
-| SEG DP | Non utilisé |
+| SEG A | supérieur |
+| SEG B | supérieur droit |
+| SEG C | inférieur droit |
+| SEG D | inférieur |
+| SEG E | inférieur gauche |
+| SEG F | supérieur gauche |
+| SEG G | central |
 
-### Correspondance des chiffres
-
-| Sortie MAX7219 | Position |
+| MAX7219 | Chiffre |
 |---|---|
-| DIG0 | Dizaine heures |
-| DIG1 | Unité heures |
-| DIG2 | Dizaine minutes |
-| DIG3 | Unité minutes |
-| DIG4-DIG7 | Non utilisés |
+| DIG0 | dizaine heure |
+| DIG1 | unité heure |
+| DIG2 | dizaine minute |
+| DIG3 | unité minute |
 
-## 6. Un segment = 4 LED rouges 3 mm
+### Chaque segment
 
-Chaque LED doit avoir **sa propre résistance**.
+Chaque LED possède **sa propre résistance**.
 
-| Élément | Va vers |
+Exemple pour le segment A du chiffre 1 :
+
+| Départ | Va vers |
 |---|---|
 | MAX7219 SEG A | Résistance A1 |
 | Résistance A1 | Anode LED A1 |
@@ -173,208 +158,206 @@ Chaque LED doit avoir **sa propre résistance**.
 | Résistance A3 | Anode LED A3 |
 | MAX7219 SEG A | Résistance A4 |
 | Résistance A4 | Anode LED A4 |
-| Cathodes LED A1-A4 | Cathode commune du chiffre → DIGx |
+| Cathodes LED A1-A4 | DIG0 |
 
-Même principe pour les segments B, C, D, E, F et G et pour les quatre chiffres.
+Même principe pour A-G des quatre chiffres. Ne pas mettre une seule résistance commune aux quatre LED d'un segment.
 
-## 7. Colon `:`
+---
 
-Le colon est indépendant du `SEG DP` du MAX7219.
+## 6. Colon `:`
 
-| Arduino | Va vers | Puis vers |
-|---|---|---|
-| D7 | Résistance colon haut | Anode LED colon haut |
-| D7 | Résistance colon bas | Anode LED colon bas |
-| Cathode colon haut | GND | Masse |
-| Cathode colon bas | GND | Masse |
+Le colon n'utilise pas SEG DP.
 
-> Les deux LED du colon ne doivent pas être reliées directement à D7 sans résistances. La valeur exacte sera fixée selon le courant choisi pour les LED rouges 3 mm.
-
-## 8. Contour — LED séparées par couleur
-
-> **Ce ne sont pas des LED RGB intégrées. Chaque LED possède une seule couleur.**
-
-| Couleur | LED 3 mm | Groupes de 4 |
-|---|---:|---:|
-| Rouge | 68 | 17 |
-| Vert | 68 | 17 |
-| Bleu | 68 | 17 |
-| **Total** | **204** | **51** |
-
-## 9. Groupe de 4 LED du contour
-
-Le contour est alimenté depuis le **12 V DC**, pas depuis le 5 V de l'Arduino.
-
-Chaque LED possède sa propre résistance.
-
-| Élément | Va vers |
+| Départ | Va vers |
 |---|---|
-| +12 V | Résistance R1 |
-| Résistance R1 | Anode LED 1 |
-| +12 V | Résistance R2 |
-| Résistance R2 | Anode LED 2 |
-| +12 V | Résistance R3 |
-| Résistance R3 | Anode LED 3 |
-| +12 V | Résistance R4 |
-| Résistance R4 | Anode LED 4 |
-| Cathodes LED 1-4 | Une sortie OUT du ULN2803A |
-| GND ULN2803A | GND commun |
+| Arduino D7 | Résistance colon haut → anode LED haut |
+| Arduino D7 | Résistance colon bas → anode LED bas |
+| Cathode LED colon haut | GND |
+| Cathode LED colon bas | GND |
 
-## 10. 74HC595 → ULN2803A → contour
+Utiliser une résistance par LED, par exemple **470 Ω** pour commencer avec une alimentation logique 5 V.
 
-Chaque sortie Q0-Q7 du 74HC595 commande une entrée du ULN2803A. Le ULN2803A commute le côté cathode du groupe de 4 LED.
+---
 
-| 74HC595 | Broche | ULN2803A | Entrée | Groupe |
-|---|---:|---|---:|---|
-| #1 | Q0 (15) | #1 | IN1 | Rouge 01 |
-| #1 | Q1 (1) | #1 | IN2 | Rouge 02 |
-| #1 | Q2 (2) | #1 | IN3 | Rouge 03 |
-| #1 | Q3 (3) | #1 | IN4 | Rouge 04 |
-| #1 | Q4 (4) | #1 | IN5 | Rouge 05 |
-| #1 | Q5 (5) | #1 | IN6 | Rouge 06 |
-| #1 | Q6 (6) | #1 | IN7 | Rouge 07 |
-| #1 | Q7 (7) | #1 | IN8 | Rouge 08 |
-| #2 | Q0 (15) | #2 | IN1 | Rouge 09 |
-| #2 | Q1 (1) | #2 | IN2 | Rouge 10 |
-| #2 | Q2 (2) | #2 | IN3 | Rouge 11 |
-| #2 | Q3 (3) | #2 | IN4 | Rouge 12 |
-| #2 | Q4 (4) | #2 | IN5 | Rouge 13 |
-| #2 | Q5 (5) | #2 | IN6 | Rouge 14 |
-| #2 | Q6 (6) | #2 | IN7 | Rouge 15 |
-| #2 | Q7 (7) | #2 | IN8 | Rouge 16 |
-| #3 | Q0 (15) | #3 | IN1 | Rouge 17 |
-| #3 | Q1 (1) | #3 | IN2 | Vert 01 |
-| #3 | Q2 (2) | #3 | IN3 | Vert 02 |
-| #3 | Q3 (3) | #3 | IN4 | Vert 03 |
-| #3 | Q4 (4) | #3 | IN5 | Vert 04 |
-| #3 | Q5 (5) | #3 | IN6 | Vert 05 |
-| #3 | Q6 (6) | #3 | IN7 | Vert 06 |
-| #3 | Q7 (7) | #3 | IN8 | Vert 07 |
-| #4 | Q0 (15) | #4 | IN1 | Vert 08 |
-| #4 | Q1 (1) | #4 | IN2 | Vert 09 |
-| #4 | Q2 (2) | #4 | IN3 | Vert 10 |
-| #4 | Q3 (3) | #4 | IN4 | Vert 11 |
-| #4 | Q4 (4) | #4 | IN5 | Vert 12 |
-| #4 | Q5 (5) | #4 | IN6 | Vert 13 |
-| #4 | Q6 (6) | #4 | IN7 | Vert 14 |
-| #4 | Q7 (7) | #4 | IN8 | Vert 15 |
-| #5 | Q0 (15) | #5 | IN1 | Vert 16 |
-| #5 | Q1 (1) | #5 | IN2 | Vert 17 |
-| #5 | Q2 (2) | #5 | IN3 | Bleu 01 |
-| #5 | Q3 (3) | #5 | IN4 | Bleu 02 |
-| #5 | Q4 (4) | #5 | IN5 | Bleu 03 |
-| #5 | Q5 (5) | #5 | IN6 | Bleu 04 |
-| #5 | Q6 (6) | #5 | IN7 | Bleu 05 |
-| #5 | Q7 (7) | #5 | IN8 | Bleu 06 |
-| #6 | Q0 (15) | #6 | IN1 | Bleu 07 |
-| #6 | Q1 (1) | #6 | IN2 | Bleu 08 |
-| #6 | Q2 (2) | #6 | IN3 | Bleu 09 |
-| #6 | Q3 (3) | #6 | IN4 | Bleu 10 |
-| #6 | Q4 (4) | #6 | IN5 | Bleu 11 |
-| #6 | Q5 (5) | #6 | IN6 | Bleu 12 |
-| #6 | Q6 (6) | #6 | IN7 | Bleu 13 |
-| #6 | Q7 (7) | #6 | IN8 | Bleu 14 |
-| #7 | Q0 (15) | #7 | IN1 | Bleu 15 |
-| #7 | Q1 (1) | #7 | IN2 | Bleu 16 |
-| #7 | Q2 (2) | #7 | IN3 | Bleu 17 |
-| #7 | Q3-Q7 | — | — | Réservées |
+## 7. 74HC595 — nomenclature réelle
 
-## 11. Alimentation du contour 12 V
+Pour chaque 74HC595 :
 
-| Élément | Alimentation |
-|---|---|
-| LED rouges contour | +12 V → résistance → LED → ULN2803A → GND |
-| LED vertes contour | +12 V → résistance → LED → ULN2803A → GND |
-| LED bleues contour | +12 V → résistance → LED → ULN2803A → GND |
-| ULN2803A | Logique 5 V côté entrées + GND commun |
-| 74HC595 | +5 V |
-
-Les résistances du contour seront calculées séparément pour rouge, vert et bleu, car leurs tensions directes `Vf` sont différentes.
-
-## 12. DS3231
-
-| Arduino Nano | DS3231 | Fonction |
-|---|---|---|
-| A4 | SDA | I2C DATA |
-| A5 | SCL | I2C CLOCK |
-| 5V | VCC | Alimentation |
-| GND | GND | Masse |
-
-## 13. Boutons
-
-| Bouton | Broche Arduino | Fonction |
-|---|---|---|
-| Bouton 1 | D2 | ON/OFF |
-| Bouton 2 | D3 | RESET / MODE / validation |
-| Bouton 3 | D4 | + |
-| Bouton 4 | D5 | - |
-
-Pour le prototype : une borne du bouton vers la broche Arduino et l'autre vers GND, avec `INPUT_PULLUP` dans le code.
-
-## 14. Buzzer passif
-
-| Arduino | Va vers | Fonction |
-|---|---|---|
-| D6 | Buzzer passif | Son |
-| GND | Buzzer | Masse |
-
-Si le buzzer choisi consomme trop de courant, il sera commandé par un transistor. Ce point sera validé avec la référence du buzzer.
-
-## 15. Protection et distribution 12 V → 5 V
-
-| Élément | Connexion | Rôle |
-|---|---|---|
-| JACK + | Fusible/interrupteur | Entrée +12 V |
-| JACK - | GND commun | Retour alimentation |
-| +12 V protégé | Entrée `VIN+` du buck | Conversion 12 V → 5 V |
-| GND | Entrée `VIN-` du buck | Masse buck |
-| Sortie +5 V du buck | Rail +5 V | Logique |
-| Sortie GND du buck | Rail GND | Masse logique |
-| +12 V | Contour LED | Puissance LEDs |
-| +5 V | Arduino Nano | Logique |
-| +5 V | MAX7219 | Logique + affichage |
-| +5 V | 74HC595 | Logique contour |
-| +5 V | DS3231 | RTC |
-
-> **Attention : ne pas brancher le 12 V directement sur la broche 5V de l'Arduino Nano, ni sur le V+ du MAX7219, ni sur VCC des 74HC595/DS3231.**
-
-## 16. Découplage recommandé
-
-| Composant | Va entre | Position |
-|---|---|---|
-| 100 nF | +5 V ↔ GND | Près de chaque 74HC595 |
-| 100 nF | +5 V ↔ GND | Près du MAX7219 |
-| 100 nF | +5 V ↔ GND | Près du DS3231 |
-| 10 µF | +5 V ↔ GND | Près du MAX7219 / rail logique |
-| Condensateur de sortie buck | Selon fiche technique du buck | À proximité du buck |
-
-## 17. Résistances — règle de câblage
-
-| Partie | Nombre de LED | Règle |
-|---|---:|---|
-| Segments rouges | 112 | 1 résistance par LED |
-| Colon rouge | 2 | 1 résistance par LED |
-| Contour rouge | 68 | 1 résistance par LED |
-| Contour vert | 68 | 1 résistance par LED |
-| Contour bleu | 68 | 1 résistance par LED |
-
-> Les valeurs finales ne doivent pas être choisies uniquement par couleur. Elles seront calculées avec la tension d'alimentation, la tension directe `Vf`, le courant cible et le mode de fonctionnement. Pour le contour 12 V, une même valeur ne sera probablement pas utilisée pour rouge, vert et bleu.
-
-## 18. Ordre de montage et de validation
-
-| Étape | Ce qu'on câble | Validation |
+| Pin | Nom réel | Connexion |
 |---:|---|---|
-| 1 | Buck 12 V → 5 V sans charge | Mesurer exactement 5,0 V |
-| 2 | Arduino + DS3231 | Lecture RTC |
-| 3 | MAX7219 + 1 chiffre de 28 LED | Affichage test |
-| 4 | 4 chiffres + colon | `00:00` / `88:88` |
-| 5 | 74HC595 #1 + ULN2803A + 1 groupe contour | Groupe ON/OFF |
-| 6 | Chaînage des 7 × 74HC595 | 51 groupes contrôlables |
-| 7 | Contour rouge/vert/bleu complet | Animation |
-| 8 | 4 boutons | Commandes |
-| 9 | Buzzer | Sons |
-| 10 | Animation de démarrage | Splash complet |
-| 11 | Modification heure/minute | Mode pause |
-| 12 | Tout le système | NOVAWATCH final |
+| 1 | Q1 | entrée ULN correspondante |
+| 2 | Q2 | entrée ULN correspondante |
+| 3 | Q3 | entrée ULN correspondante |
+| 4 | Q4 | entrée ULN correspondante |
+| 5 | Q5 | entrée ULN correspondante |
+| 6 | Q6 | entrée ULN correspondante |
+| 7 | Q7 | entrée ULN correspondante |
+| 8 | GND | GND |
+| 9 | Q7S | DS du 595 suivant |
+| 10 | MR | +5 V |
+| 11 | SHCP | Arduino D13 |
+| 12 | STCP | Arduino D9 |
+| 13 | OE | GND |
+| 14 | DS | Arduino D8 ou Q7S précédent |
+| 15 | Q0 | entrée ULN correspondante |
+| 16 | VCC | +5 V |
 
-**On valide chaque étape avant de passer à la suivante.**
+### Chaînage
+
+| Départ | Va vers |
+|---|---|
+| D8 | DS pin 14 du #1 |
+| Q7S pin 9 #1 | DS pin 14 #2 |
+| Q7S pin 9 #2 | DS pin 14 #3 |
+| Q7S pin 9 #3 | DS pin 14 #4 |
+| Q7S pin 9 #4 | DS pin 14 #5 |
+| Q7S pin 9 #5 | DS pin 14 #6 |
+| Q7S pin 9 #6 | DS pin 14 #7 |
+| Q7S pin 9 #7 | NC |
+
+Pour les 7 CI : pin 8 → GND, pin 10 → +5 V, pin 11 → D13, pin 12 → D9, pin 13 → GND, pin 16 → +5 V.
+
+---
+
+## 8. 74HC595 → ULN2803A → 40 groupes
+
+Le contour contient **40 groupes exactement**. Chaque groupe contient 4 LED. Les 16 sorties restantes des 7 registres ne sont pas utilisées.
+
+| 74HC595 | Sortie | Pin | ULN2803A | Entrée | Groupe contour |
+|---|---|---:|---|---:|---:|
+| #1 | Q0 | 15 | #1 | IN1 | G01 |
+| #1 | Q1 | 1 | #1 | IN2 | G02 |
+| #1 | Q2 | 2 | #1 | IN3 | G03 |
+| #1 | Q3 | 3 | #1 | IN4 | G04 |
+| #1 | Q4 | 4 | #1 | IN5 | G05 |
+| #1 | Q5 | 5 | #1 | IN6 | G06 |
+| #1 | Q6 | 6 | #1 | IN7 | G07 |
+| #1 | Q7 | 7 | #1 | IN8 | G08 |
+| #2 | Q0 | 15 | #2 | IN1 | G09 |
+| #2 | Q1 | 1 | #2 | IN2 | G10 |
+| #2 | Q2 | 2 | #2 | IN3 | G11 |
+| #2 | Q3 | 3 | #2 | IN4 | G12 |
+| #2 | Q4 | 4 | #2 | IN5 | G13 |
+| #2 | Q5 | 5 | #2 | IN6 | G14 |
+| #2 | Q6 | 6 | #2 | IN7 | G15 |
+| #2 | Q7 | 7 | #2 | IN8 | G16 |
+| #3 | Q0 | 15 | #3 | IN1 | G17 |
+| #3 | Q1 | 1 | #3 | IN2 | G18 |
+| #3 | Q2 | 2 | #3 | IN3 | G19 |
+| #3 | Q3 | 3 | #3 | IN4 | G20 |
+| #3 | Q4 | 4 | #3 | IN5 | G21 |
+| #3 | Q5 | 5 | #3 | IN6 | G22 |
+| #3 | Q6 | 6 | #3 | IN7 | G23 |
+| #3 | Q7 | 7 | #3 | IN8 | G24 |
+| #4 | Q0 | 15 | #4 | IN1 | G25 |
+| #4 | Q1 | 1 | #4 | IN2 | G26 |
+| #4 | Q2 | 2 | #4 | IN3 | G27 |
+| #4 | Q3 | 3 | #4 | IN4 | G28 |
+| #4 | Q4 | 4 | #4 | IN5 | G29 |
+| #4 | Q5 | 5 | #4 | IN6 | G30 |
+| #4 | Q6 | 6 | #4 | IN7 | G31 |
+| #4 | Q7 | 7 | #4 | IN8 | G32 |
+| #5 | Q0 | 15 | #5 | IN1 | G33 |
+| #5 | Q1 | 1 | #5 | IN2 | G34 |
+| #5 | Q2 | 2 | #5 | IN3 | G35 |
+| #5 | Q3 | 3 | #5 | IN4 | G36 |
+| #5 | Q4 | 4 | #5 | IN5 | G37 |
+| #5 | Q5 | 5 | #5 | IN6 | G38 |
+| #5 | Q6 | 6 | #5 | IN7 | G39 |
+| #5 | Q7 | 7 | #5 | IN8 | G40 |
+| #6 | Q0-Q7 | 15,1-7 | #6 | IN1-IN8 | NC |
+| #7 | Q0-Q7 | 15,1-7 | #7 | IN1-IN8 | NC |
+
+**Important :** le code utilise `MSBFIRST` pour que le bit correspondant à Q0 arrive réellement sur Q0 dans cette chaîne de 74HC595.
+
+---
+
+## 9. ULN2803A — brochage réel
+
+Pour chaque ULN2803A :
+
+| Pin | Nom | Connexion |
+|---:|---|---|
+| 1 | IN1 | sortie Q0 du 74HC595 |
+| 2 | IN2 | sortie Q1 |
+| 3 | IN3 | sortie Q2 |
+| 4 | IN4 | sortie Q3 |
+| 5 | IN5 | sortie Q4 |
+| 6 | IN6 | sortie Q5 |
+| 7 | IN7 | sortie Q6 |
+| 8 | IN8 | sortie Q7 |
+| 9 | GND | GND commun |
+| 10 | COM | NC pour ces LED sans bobine |
+| 11 | OUT8 | cathodes groupe correspondant |
+| 12 | OUT7 | cathodes groupe correspondant |
+| 13 | OUT6 | cathodes groupe correspondant |
+| 14 | OUT5 | cathodes groupe correspondant |
+| 15 | OUT4 | cathodes groupe correspondant |
+| 16 | OUT3 | cathodes groupe correspondant |
+| 17 | OUT2 | cathodes groupe correspondant |
+| 18 | OUT1 | cathodes groupe correspondant |
+
+Le ULN2803A ne fournit pas le +12 V : il **commute la masse** des groupes de LED.
+
+---
+
+## 10. Un groupe de 4 LED contour
+
+Pour chaque groupe G01 à G40 :
+
+| Départ | Va vers |
+|---|---|
+| +12 V | Résistance LED 1 |
+| Résistance LED 1 | Anode LED 1 |
+| +12 V | Résistance LED 2 |
+| Résistance LED 2 | Anode LED 2 |
+| +12 V | Résistance LED 3 |
+| Résistance LED 3 | Anode LED 3 |
+| +12 V | Résistance LED 4 |
+| Résistance LED 4 | Anode LED 4 |
+| Cathode LED 1 | même sortie OUT du ULN du groupe |
+| Cathode LED 2 | même sortie OUT du ULN du groupe |
+| Cathode LED 3 | même sortie OUT du ULN du groupe |
+| Cathode LED 4 | même sortie OUT du ULN du groupe |
+
+Chaque LED doit avoir **sa propre résistance**. La valeur doit être calculée selon la couleur et le Vf réel ; une valeur de départ typique à 12 V est **1 kΩ**, à vérifier par mesure de courant avant fonctionnement prolongé.
+
+---
+
+## 11. DS3231
+
+| DS3231 | Arduino Nano |
+|---|---|
+| VCC | +5 V |
+| GND | GND |
+| SDA | A4 |
+| SCL | A5 |
+
+---
+
+## 12. Buzzer
+
+| Élément | Connexion |
+|---|---|
+| D6 | + buzzer passif |
+| - buzzer | GND |
+
+Le programme utilise `tone()` pour la mélodie de démarrage et les sons de modification.
+
+---
+
+## 13. Règle importante de validation
+
+Avant la mise sous tension complète :
+
+1. Régler le buck à 5,0 V sans Arduino.
+2. Vérifier la polarité du 12 V.
+3. Vérifier le GND commun.
+4. Vérifier chaque pin du MAX7219.
+5. Vérifier chaque chaîne Q7S → DS des 74HC595.
+6. Vérifier chaque Q0-Q7 → IN1-IN8 du ULN.
+7. Vérifier que les 40 groupes sont bien G01-G40.
+8. Vérifier une résistance individuelle par LED.
+9. Vérifier que les sorties non utilisées des 74HC595 #6 et #7 restent sans charge.
+
+**Référence finale : 114 LED affichage + 160 LED contour = 274 LED.**

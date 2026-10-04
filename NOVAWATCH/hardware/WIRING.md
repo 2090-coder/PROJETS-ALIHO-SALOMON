@@ -1,6 +1,6 @@
 # NOVAWATCH - Cablage HT16K33
 
-Ce document remplace l ancien cablage MAX7219.
+Ce document decrit le cablage actuel du NOVAWATCH avec HT16K33.
 
 ## 1. Architecture
 

@@ -1,45 +1,74 @@
-# NOVAWATCH — Software V1
+# NOVAWATCH - Logiciel
 
 ## Carte
 
 - Arduino Nano
-- MAX7219
+- HT16K33
 - DS3231
 - 7 x 74HC595
 - 7 x ULN2803A
-- Buzzer passif
+- avertisseur passif
 
 ## Fichier principal
 
 `NOVAWATCH.ino`
 
-## Fonctionnalités V1
+## Fonctionnalites
 
-- ON/OFF par bouton 1
-- Animation SPLASH au démarrage
-- Mélodie de démarrage
-- Affichage HH:MM avec MAX7219
-- Lecture de l'heure avec DS3231
-- Animation permanente du contour
-- **40 groupes de contour x 4 LED = 160 LED**
-- Les groupes gardent la couleur définie par leur câblage physique
-- Bouton 2 : 1 clic = reset, 2 clics = entrée en modification
-- En modification : heures clignotantes en premier
-- Bouton 2 : 1 clic = passage heures/minutes
-- Bouton 2 : 3 clics = validation et sortie
-- Bouton 3 : +
-- Bouton 4 : -
-- Son différent selon le chiffre modifié
-- Utilisation de `millis()` pour éviter les `delay()` bloquants
+- activation et arret par bouton ;
+- animation de demarrage ;
+- melodie de demarrage ;
+- affichage HH:MM avec HT16K33 ;
+- lecture de l heure avec DS3231 ;
+- animation du contour ;
+- 40 groupes de contour ;
+- 4 LED par groupe ;
+- 160 LED de contour ;
+- reglage des heures ;
+- reglage des minutes ;
+- clignotement du champ en cours ;
+- son different selon le chiffre modifie ;
+- utilisation de millis() pour eviter les attentes bloquantes ;
+- verification du bus I2C au demarrage.
 
-## Contour
+## Noms techniques HT16K33
 
-Le câblage conserve 7 x 74HC595, soit 56 sorties disponibles. NOVAWATCH utilise actuellement 40 sorties pour les 40 groupes du contour. Les 16 sorties restantes sont laissées inutilisées.
+Le code garde les noms techniques du composant lorsqu ils sont necessaires :
 
-Chaque groupe commande 4 LED de la même couleur via le ULN2803A correspondant. La couleur n'est pas créée par le logiciel : elle dépend de la couleur des LED réellement câblées sur le groupe.
+- ROW0 a ROW15 ;
+- COM0 a COM7 ;
+- RAM ;
+- adresse I2C.
+
+Les variables et fonctions du programme sont en francais sans accents.
+
+## I2C
+
+- DS3231 : 0x68
+- HT16K33 : 0x70
+
+Le Nano utilise A4 pour SDA et A5 pour SCL.
+
+## Affichage
+
+La correspondance logique utilisee est :
+
+- ROW0 = A
+- ROW1 = B
+- ROW2 = C
+- ROW3 = D
+- ROW4 = E
+- ROW5 = F
+- ROW6 = G
+- COM0 = chiffre 1
+- COM1 = chiffre 2
+- COM2 = chiffre 3
+- COM3 = chiffre 4
+
+Le point decimal n est pas utilise.
 
 ## Important
 
-Le code suppose que le câblage matériel suit `../hardware/WIRING.md`.
+Le programme suppose que le cablage reel respecte :
 
-L'alimentation générale du prototype est prévue en 12 V DC, avec conversion 12 V vers 5 V pour la logique. Les LED du contour sont pilotées sous 12 V par les ULN2803A.
+`../hardware/WIRING.md`.

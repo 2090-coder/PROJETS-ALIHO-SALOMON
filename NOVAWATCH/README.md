@@ -1,56 +1,179 @@
 # NOVAWATCH
 
-## 1. Objectif
+## Objectif
 
-NOVAWATCH est une horloge numérique artisanale affichant `HH:MM` avec quatre chiffres 7 segments construits avec des LED rouges 3 mm.
+NOVAWATCH est une horloge numerique artisanale basee sur un Arduino Nano.
 
-Chaque chiffre possède 7 segments et chaque segment contient 4 LED rouges :
+Le systeme utilise :
 
-- 4 chiffres × 7 segments × 4 LED = **112 LED rouges**
-- 2 LED rouges pour les deux points centraux `:`
-- Total affichage = **114 LED rouges**
-- Aucun point décimal (DP)
+- un Arduino Nano ;
+- un HT16K33 pour le multiplexage de l affichage 7 segments ;
+- un DS3231 pour conserver l heure ;
+- 7 circuits 74HC595 ;
+- 7 circuits ULN2803A ;
+- 4 boutons ;
+- un avertisseur passif ;
+- 2 LED pour les deux points ;
+- un contour de 40 groupes de 4 LED.
 
-Le contour est constitué de LED individuelles 3 mm :
+Le projet est concu pour du vrai materiel. Il ne depend pas d une simulation.
 
-- 68 LED rouges
-- 68 LED vertes
-- 68 LED bleues
-- soit **204 LED de contour**
-- organisation retenue : 17 groupes de 4 LED par couleur
-
-## 2. Architecture matérielle retenue
+## Architecture
 
 ```text
-                         +----------------+
-                         |  ARDUINO NANO  |
-                         +--------+-------+
-                                  |
-             +--------------------+--------------------+
-             |                    |                    |
-             v                    v                    v
-        MAX7219 +            DS3231 RTC          74HC595 x7
-       affichage HH:MM            I2C             + ULN2803A x7
-             |                                         |
-             v                                         v
-      112 LED segments                         204 LED contour
-        + 2 LED colon                       R / V / B, groupes de 4
-
-             Arduino Nano
-                  |
-             Buzzer passif
-                  |
-             4 boutons
+                         +-------------------+
+                         |    ARDUINO NANO   |
+                         +---------+---------+
+                                   |
+              +--------------------+--------------------+
+              |                    |                    |
+              v                    v                    v
+        +-----------+        +-----------+        +-----------+
+        | HT16K33   |        |  DS3231   |        | 7x595     |
+        | I2C 0x70  |        | I2C 0x68  |        | + 7xULN   |
+        +-----+-----+        +-----------+        +-----+-----+
+              |                                      |
+              v                                      v
+       4 chiffres 7 segments                  40 groupes contour
+              |                                      |
+        + 2 LED deux points                         160 LED
 ```
 
-## 3. Principe important
+## Bus I2C
 
-Les 112 LED des chiffres ne sont pas 112 sorties indépendantes. Les 4 LED d'un même segment sont regroupées électriquement dans une même position de segment, avec une résistance individuelle par LED. Le MAX7219 assure le multiplexage des 4 chiffres.
+Le Nano utilise :
 
-Le contour n'est pas constitué de LED RGB intégrées. Chaque LED est une LED indépendante de sa couleur. Les groupes de 4 LED d'une même couleur sont commandés par les sorties des ULN2803A.
+- A4 = SDA
+- A5 = SCL
 
-## 4. Première règle de construction
+Les deux circuits partagent le meme bus :
 
-Ne pas fabriquer les 114 LED de l'afficheur et les 204 LED du contour avant validation du premier sous-ensemble. Le premier test sera un chiffre 7 segments complet avec 4 LED par segment.
+- DS3231 = 0x68
+- HT16K33 = 0x70
 
-Voir `NOVAWATCH/hardware/WIRING.md` pour le câblage.
+Les adresses ne sont donc pas en conflit.
+
+## HT16K33
+
+Le HT16K33 possede 16 sorties ROW et 8 sorties COM.
+
+Pour NOVAWATCH :
+
+| HT16K33 | Fonction |
+|---|---|
+| ROW0 | segment A |
+| ROW1 | segment B |
+| ROW2 | segment C |
+| ROW3 | segment D |
+| ROW4 | segment E |
+| ROW5 | segment F |
+| ROW6 | segment G |
+| ROW7 | point decimal non utilise |
+| COM0 | chiffre 1 |
+| COM1 | chiffre 2 |
+| COM2 | chiffre 3 |
+| COM3 | chiffre 4 |
+
+La RAM utilisee est :
+
+| COM | Adresse ROW0-ROW7 |
+|---|---:|
+| COM0 | 0x00 |
+| COM1 | 0x02 |
+| COM2 | 0x04 |
+| COM3 | 0x06 |
+
+Le code utilise directement le bus I2C avec `Wire.h`. Aucune bibliotheque HT16K33 externe n est necessaire.
+
+## Attention au module HT16K33
+
+Certains modules utilisent des reperes comme A0..A15 et C0..C7.
+
+Ces reperes doivent etre lus sur la serigraphie du module. Ne pas deviner les numeros physiques du connecteur du panneau 4 chiffres sans connaitre le brochage exact du panneau.
+
+## Broches Arduino
+
+| Nano | Fonction |
+|---|---|
+| D2 | bouton alimentation |
+| D3 | bouton mode |
+| D4 | bouton plus |
+| D5 | bouton moins |
+| D6 | avertisseur passif |
+| D7 | deux points |
+| D8 | DS des 74HC595 |
+| D9 | STCP des 74HC595 |
+| D13 | SHCP des 74HC595 |
+| A4 | SDA |
+| A5 | SCL |
+
+D10 et D11 ne sont plus utilises pour l affichage.
+
+## Commandes
+
+### Hors mode reglage
+
+- 1 clic sur MODE : remise de l horloge a 00:00:00
+- 2 clics sur MODE : entree dans le reglage
+- PLUS et MOINS ne sont actifs qu en mode reglage
+
+### Mode reglage
+
+- 1 clic sur MODE : passer des heures aux minutes ou inversement
+- PLUS : augmenter la valeur
+- MOINS : diminuer la valeur
+- 3 clics sur MODE : enregistrer et sortir
+
+Le champ en cours clignote.
+
+## Demarrage
+
+Lors de l activation :
+
+1. animation des segments ;
+2. melodie ;
+3. animation du contour ;
+4. lecture du DS3231 ;
+5. affichage de HH:MM.
+
+## Contour
+
+Le contour utilise :
+
+- 7 x 74HC595 ;
+- 56 sorties disponibles ;
+- 40 sorties utilisees ;
+- 16 sorties non utilisees ;
+- 40 groupes ;
+- 4 LED par groupe ;
+- 160 LED au total.
+
+Les ULN2803A commandent les masses des groupes.
+
+La couleur des LED depend du cablage reel. Le logiciel ne genere pas de couleur RGB.
+
+## Alimentation
+
+Le projet recoit une alimentation principale de 12 V DC.
+
+Un convertisseur abaisseur doit fournir le 5 V pour :
+
+- Arduino Nano ;
+- HT16K33 ;
+- DS3231 ;
+- 74HC595 ;
+- logique des ULN2803A.
+
+Ne jamais appliquer directement 12 V sur la ligne 5 V.
+
+## Fichiers
+
+- `software/NOVAWATCH.ino` : programme principal
+- `software/README.md` : documentation du logiciel
+- `hardware/WIRING.md` : cablage et validation materielle
+
+## Reference HT16K33
+
+Documentation officielle Holtek :
+
+https://www.holtek.com/webapi/116711/HT16K33Av110.pdf

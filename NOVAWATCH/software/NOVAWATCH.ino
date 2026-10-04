@@ -2,577 +2,809 @@
 
 // ============================================================
 // NOVAWATCH
-// Arduino Nano + MAX7219 + DS3231 + 7x74HC595 + 7xULN2803A
+// Arduino Nano + HT16K33 + DS3231 + 7x74HC595 + 7xULN2803A
 // Alimentation principale : 12 V DC
-// Affichage : 114 LED
-// Contour : 40 groupes x 4 LED = 160 LED
+// Affichage : 4 chiffres 7 segments + 2 LED pour les deux points
+// Contour : 40 groupes de 4 LED = 160 LED
 // ============================================================
 
-const byte PIN_BUTTON_POWER = 2;
-const byte PIN_BUTTON_MODE  = 3;
-const byte PIN_BUTTON_PLUS  = 4;
-const byte PIN_BUTTON_MINUS = 5;
-const byte PIN_BUZZER       = 6;
-const byte PIN_COLON        = 7;
+// -------------------- Broches Arduino -----------------------
 
-const byte PIN_595_DATA  = 8;
-const byte PIN_595_LATCH = 9;
-const byte PIN_MAX_CS    = 10;
-const byte PIN_MAX_DATA  = 11;
-const byte PIN_CLOCK     = 13;
+const byte BROCHE_BOUTON_ALIMENTATION = 2;
+const byte BROCHE_BOUTON_MODE = 3;
+const byte BROCHE_BOUTON_PLUS = 4;
+const byte BROCHE_BOUTON_MOINS = 5;
+const byte BROCHE_AVERTISSEUR = 6;
+const byte BROCHE_DEUX_POINTS = 7;
 
-const byte RTC_ADDRESS = 0x68;
+const byte BROCHE_595_DONNEES = 8;
+const byte BROCHE_595_VERROU = 9;
+const byte BROCHE_HORLOGE = 13;
 
-// -------------------- MAX7219 -------------------------------
-const byte MAX_REG_DECODE      = 0x09;
-const byte MAX_REG_INTENSITY   = 0x0A;
-const byte MAX_REG_SCANLIMIT   = 0x0B;
-const byte MAX_REG_SHUTDOWN    = 0x0C;
-const byte MAX_REG_DISPLAYTEST = 0x0F;
+// A4 = SDA et A5 = SCL pour le bus I2C.
 
-const byte SEG_A = 0x01;
-const byte SEG_B = 0x02;
-const byte SEG_C = 0x04;
-const byte SEG_D = 0x08;
-const byte SEG_E = 0x10;
-const byte SEG_F = 0x20;
-const byte SEG_G = 0x40;
+// -------------------- Adresses I2C ---------------------------
 
-const byte DIGIT_MASK[10] = {
-  SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F,
-  SEG_B | SEG_C,
-  SEG_A | SEG_B | SEG_D | SEG_E | SEG_G,
-  SEG_A | SEG_B | SEG_C | SEG_D | SEG_G,
-  SEG_B | SEG_C | SEG_F | SEG_G,
-  SEG_A | SEG_C | SEG_D | SEG_F | SEG_G,
-  SEG_A | SEG_C | SEG_D | SEG_E | SEG_F | SEG_G,
-  SEG_A | SEG_B | SEG_C,
-  SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F | SEG_G,
-  SEG_A | SEG_B | SEG_C | SEG_D | SEG_F | SEG_G
+const byte ADRESSE_I2C_DS3231 = 0x68;
+const byte ADRESSE_I2C_HT16K33 = 0x70;
+
+// -------------------- Commandes HT16K33 ---------------------
+
+const byte HT16K33_COMMANDE_SYSTEME = 0x20;
+const byte HT16K33_OSCILLATEUR_ACTIF = 0x01;
+const byte HT16K33_COMMANDE_AFFICHAGE = 0x80;
+const byte HT16K33_AFFICHAGE_ACTIF = 0x01;
+const byte HT16K33_COMMANDE_LUMINOSITE = 0xE0;
+const byte HT16K33_LUMINOSITE = 8;
+
+// Le HT16K33 possede ROW0 a ROW15 et COM0 a COM7.
+// Pour cet affichage, ROW0 a ROW7 sont utilises pour A a G et DP.
+// COM0 a COM3 sont utilises pour les quatre chiffres.
+// Sur un module repere A0..A15 et C0..C7, verifier la serigraphie
+// avant de connecter le panneau.
+
+const byte HT16K33_LIGNE0_SEG_A = 0;
+const byte HT16K33_LIGNE1_SEG_B = 1;
+const byte HT16K33_LIGNE2_SEG_C = 2;
+const byte HT16K33_LIGNE3_SEG_D = 3;
+const byte HT16K33_LIGNE4_SEG_E = 4;
+const byte HT16K33_LIGNE5_SEG_F = 5;
+const byte HT16K33_LIGNE6_SEG_G = 6;
+const byte HT16K33_LIGNE7_POINT_DECIMAL = 7;
+
+const byte HT16K33_COMMUN0_CHIFFRE1 = 0;
+const byte HT16K33_COMMUN1_CHIFFRE2 = 1;
+const byte HT16K33_COMMUN2_CHIFFRE3 = 2;
+const byte HT16K33_COMMUN3_CHIFFRE4 = 3;
+
+// RAM du HT16K33 :
+// COM0 = 0x00/0x01, COM1 = 0x02/0x03,
+// COM2 = 0x04/0x05, COM3 = 0x06/0x07.
+// Le premier octet contient ROW0 a ROW7.
+
+const byte HT16K33_RAM_COMMUN0 = 0x00;
+const byte HT16K33_RAM_COMMUN1 = 0x02;
+const byte HT16K33_RAM_COMMUN2 = 0x04;
+const byte HT16K33_RAM_COMMUN3 = 0x06;
+
+const byte HT16K33_SEGMENT_A = 0x01;
+const byte HT16K33_SEGMENT_B = 0x02;
+const byte HT16K33_SEGMENT_C = 0x04;
+const byte HT16K33_SEGMENT_D = 0x08;
+const byte HT16K33_SEGMENT_E = 0x10;
+const byte HT16K33_SEGMENT_F = 0x20;
+const byte HT16K33_SEGMENT_G = 0x40;
+const byte HT16K33_POINT_DECIMAL = 0x80;
+
+const byte HT16K33_MASQUE_CHIFFRES[10] = {
+  HT16K33_SEGMENT_A | HT16K33_SEGMENT_B | HT16K33_SEGMENT_C | HT16K33_SEGMENT_D | HT16K33_SEGMENT_E | HT16K33_SEGMENT_F,
+  HT16K33_SEGMENT_B | HT16K33_SEGMENT_C,
+  HT16K33_SEGMENT_A | HT16K33_SEGMENT_B | HT16K33_SEGMENT_D | HT16K33_SEGMENT_E | HT16K33_SEGMENT_G,
+  HT16K33_SEGMENT_A | HT16K33_SEGMENT_B | HT16K33_SEGMENT_C | HT16K33_SEGMENT_D | HT16K33_SEGMENT_G,
+  HT16K33_SEGMENT_B | HT16K33_SEGMENT_C | HT16K33_SEGMENT_F | HT16K33_SEGMENT_G,
+  HT16K33_SEGMENT_A | HT16K33_SEGMENT_C | HT16K33_SEGMENT_D | HT16K33_SEGMENT_F | HT16K33_SEGMENT_G,
+  HT16K33_SEGMENT_A | HT16K33_SEGMENT_C | HT16K33_SEGMENT_D | HT16K33_SEGMENT_E | HT16K33_SEGMENT_F | HT16K33_SEGMENT_G,
+  HT16K33_SEGMENT_A | HT16K33_SEGMENT_B | HT16K33_SEGMENT_C,
+  HT16K33_SEGMENT_A | HT16K33_SEGMENT_B | HT16K33_SEGMENT_C | HT16K33_SEGMENT_D | HT16K33_SEGMENT_E | HT16K33_SEGMENT_F | HT16K33_SEGMENT_G,
+  HT16K33_SEGMENT_A | HT16K33_SEGMENT_B | HT16K33_SEGMENT_C | HT16K33_SEGMENT_D | HT16K33_SEGMENT_F | HT16K33_SEGMENT_G
 };
 
-// -------------------- Contour -------------------------------
-const byte SHIFT_REG_COUNT = 7;
-const byte CONTOUR_GROUPS = 40;
-byte contourData[SHIFT_REG_COUNT] = {0};
-byte contourGroup = 0;
-unsigned long lastContourUpdate = 0;
-const unsigned long CONTOUR_INTERVAL = 100;
+// -------------------- Contour --------------------------------
 
-// -------------------- RTC -----------------------------------
-byte hourNow = 0;
-byte minuteNow = 0;
-byte secondNow = 0;
-unsigned long lastRTCRead = 0;
-const unsigned long RTC_INTERVAL = 500;
+const byte NOMBRE_595 = 7;
+const byte NOMBRE_GROUPES_CONTOUR = 40;
+byte donnees_595[NOMBRE_595] = {0};
+byte groupe_contour = 0;
+unsigned long derniere_mise_a_jour_contour = 0;
+const unsigned long INTERVALLE_CONTOUR = 100;
 
-// -------------------- Etats ---------------------------------
-bool watchOn = false;
-bool startupActive = false;
-unsigned long startupStart = 0;
-unsigned long lastStartupFrame = 0;
-byte startupFrame = 0;
-const unsigned long STARTUP_DURATION = 2300;
-const unsigned long STARTUP_FRAME_INTERVAL = 120;
+// -------------------- Horloge --------------------------------
 
-enum EditField { EDIT_HOUR, EDIT_MINUTE };
-bool editMode = false;
-EditField editField = EDIT_HOUR;
-byte editHour = 0;
-byte editMinute = 0;
-bool editVisible = true;
-unsigned long lastBlink = 0;
-const unsigned long BLINK_INTERVAL = 350;
+byte heure_actuelle = 0;
+byte minute_actuelle = 0;
+byte seconde_actuelle = 0;
+unsigned long derniere_lecture_ds3231 = 0;
+const unsigned long INTERVALLE_LECTURE_DS3231 = 500;
 
-// -------------------- Boutons -------------------------------
-struct Button {
-  byte pin;
-  bool raw;
-  bool stable;
-  unsigned long changedAt;
+// -------------------- Etats -----------------------------------
+
+bool montre_active = false;
+bool demarrage_actif = false;
+unsigned long debut_demarrage = 0;
+unsigned long derniere_image_demarrage = 0;
+byte image_demarrage = 0;
+const unsigned long DUREE_DEMARRAGE = 2300;
+const unsigned long INTERVALLE_IMAGE_DEMARRAGE = 120;
+
+enum ChampReglage {
+  REGLAGE_HEURE,
+  REGLAGE_MINUTE
 };
 
-Button buttonPower = {PIN_BUTTON_POWER, HIGH, HIGH, 0};
-Button buttonMode  = {PIN_BUTTON_MODE, HIGH, HIGH, 0};
-Button buttonPlus  = {PIN_BUTTON_PLUS, HIGH, HIGH, 0};
-Button buttonMinus = {PIN_BUTTON_MINUS, HIGH, HIGH, 0};
+bool mode_reglage = false;
+ChampReglage champ_reglage = REGLAGE_HEURE;
+byte heure_reglage = 0;
+byte minute_reglage = 0;
+bool affichage_reglage_visible = true;
+unsigned long dernier_clignotement = 0;
+const unsigned long INTERVALLE_CLIGNOTEMENT = 350;
 
-const unsigned long DEBOUNCE_MS = 35;
-const unsigned long MODE_WINDOW_MS = 1000;
-byte modeClicks = 0;
-unsigned long modeDeadline = 0;
+// -------------------- Boutons --------------------------------
 
-// -------------------- Buzzer --------------------------------
-struct Note {
-  unsigned int frequency;
-  unsigned int duration;
+struct Bouton {
+  byte broche;
+  bool lecture_brute;
+  bool etat_stable;
+  unsigned long dernier_changement;
 };
 
-const Note STARTUP_MELODY[] = {
+Bouton bouton_alimentation = {BROCHE_BOUTON_ALIMENTATION, HIGH, HIGH, 0};
+Bouton bouton_mode = {BROCHE_BOUTON_MODE, HIGH, HIGH, 0};
+Bouton bouton_plus = {BROCHE_BOUTON_PLUS, HIGH, HIGH, 0};
+Bouton bouton_moins = {BROCHE_BOUTON_MOINS, HIGH, HIGH, 0};
+
+const unsigned long DELAI_ANTI_REBOND = 35;
+const unsigned long FENETRE_CLICS_MODE = 1000;
+byte nombre_clics_mode = 0;
+unsigned long fin_fenetre_mode = 0;
+
+// -------------------- Avertisseur ----------------------------
+
+struct NoteMusicale {
+  unsigned int frequence;
+  unsigned int duree;
+};
+
+const NoteMusicale MELODIE_DEMARRAGE[] = {
   {523, 120}, {659, 120}, {784, 120}, {1047, 220},
   {784, 120}, {659, 120}, {523, 260}
 };
-const byte STARTUP_MELODY_COUNT = sizeof(STARTUP_MELODY) / sizeof(STARTUP_MELODY[0]);
-byte melodyIndex = 0;
-unsigned long melodyNext = 0;
 
-byte bcdToDec(byte value) {
-  return ((value >> 4) * 10) + (value & 0x0F);
+const byte NOMBRE_NOTES_DEMARRAGE =
+  sizeof(MELODIE_DEMARRAGE) / sizeof(MELODIE_DEMARRAGE[0]);
+
+byte index_note = 0;
+unsigned long prochaine_note = 0;
+
+// -------------------- Prototypes -----------------------------
+
+bool ds3231_disponible();
+bool ht16k33_disponible();
+
+// ============================================================
+// Fonctions generales
+// ============================================================
+
+byte convertir_bcd_vers_decimal(byte valeur) {
+  return ((valeur >> 4) * 10) + (valeur & 0x0F);
 }
 
-byte decToBcd(byte value) {
-  return ((value / 10) << 4) | (value % 10);
+byte convertir_decimal_vers_bcd(byte valeur) {
+  return ((valeur / 10) << 4) | (valeur % 10);
 }
 
 // ============================================================
-// MAX7219
+// HT16K33
 // ============================================================
-void maxWrite(byte reg, byte value) {
-  digitalWrite(PIN_MAX_CS, LOW);
-  shiftOut(PIN_MAX_DATA, PIN_CLOCK, MSBFIRST, reg);
-  shiftOut(PIN_MAX_DATA, PIN_CLOCK, MSBFIRST, value);
-  digitalWrite(PIN_MAX_CS, HIGH);
+
+void ht16k33_envoyer_commande(byte commande) {
+  Wire.beginTransmission(ADRESSE_I2C_HT16K33);
+  Wire.write(commande);
+  Wire.endTransmission();
 }
 
-void maxClear() {
-  for (byte reg = 1; reg <= 8; reg++) {
-    maxWrite(reg, 0x00);
+bool ht16k33_disponible() {
+  Wire.beginTransmission(ADRESSE_I2C_HT16K33);
+  return Wire.endTransmission() == 0;
+}
+
+void ht16k33_effacer_ram() {
+  Wire.beginTransmission(ADRESSE_I2C_HT16K33);
+  Wire.write(0x00);
+
+  for (byte index_octet = 0; index_octet < 16; index_octet++) {
+    Wire.write(0x00);
+  }
+
+  Wire.endTransmission();
+}
+
+void ht16k33_initialiser() {
+  ht16k33_envoyer_commande(
+    HT16K33_COMMANDE_SYSTEME | HT16K33_OSCILLATEUR_ACTIF
+  );
+
+  ht16k33_effacer_ram();
+
+  ht16k33_envoyer_commande(
+    HT16K33_COMMANDE_AFFICHAGE | HT16K33_AFFICHAGE_ACTIF
+  );
+
+  ht16k33_envoyer_commande(
+    HT16K33_COMMANDE_LUMINOSITE | (HT16K33_LUMINOSITE & 0x0F)
+  );
+}
+
+// Ecrit les bits ROW0 a ROW7 pour un COM.
+// Le deuxieme octet ROW8 a ROW15 reste a zero.
+void ht16k33_ecrire_chiffre(byte index_chiffre, byte segments) {
+  if (index_chiffre > 3) {
+    return;
+  }
+
+  const byte adresses_ram[4] = {
+    HT16K33_RAM_COMMUN0,
+    HT16K33_RAM_COMMUN1,
+    HT16K33_RAM_COMMUN2,
+    HT16K33_RAM_COMMUN3
+  };
+
+  byte adresse_ram = adresses_ram[index_chiffre];
+
+  Wire.beginTransmission(ADRESSE_I2C_HT16K33);
+  Wire.write(adresse_ram);
+  Wire.write(segments);
+  Wire.write(0x00);
+  Wire.endTransmission();
+}
+
+void ht16k33_effacer_affichage() {
+  for (byte index_chiffre = 0; index_chiffre < 4; index_chiffre++) {
+    ht16k33_ecrire_chiffre(index_chiffre, 0x00);
   }
 }
 
-void maxInit() {
-  pinMode(PIN_MAX_CS, OUTPUT);
-  pinMode(PIN_MAX_DATA, OUTPUT);
-  pinMode(PIN_CLOCK, OUTPUT);
+void ht16k33_afficher_heure(byte heure, byte minute) {
+  if (heure > 23 || minute > 59) {
+    return;
+  }
 
-  digitalWrite(PIN_MAX_CS, HIGH);
-  digitalWrite(PIN_CLOCK, LOW);
-
-  maxWrite(MAX_REG_DISPLAYTEST, 0x00);
-  maxWrite(MAX_REG_DECODE, 0x00);
-  maxWrite(MAX_REG_SCANLIMIT, 0x03);
-  maxWrite(MAX_REG_INTENSITY, 0x06);
-  maxWrite(MAX_REG_SHUTDOWN, 0x01);
-  maxClear();
+  ht16k33_ecrire_chiffre(0, HT16K33_MASQUE_CHIFFRES[heure / 10]);
+  ht16k33_ecrire_chiffre(1, HT16K33_MASQUE_CHIFFRES[heure % 10]);
+  ht16k33_ecrire_chiffre(2, HT16K33_MASQUE_CHIFFRES[minute / 10]);
+  ht16k33_ecrire_chiffre(3, HT16K33_MASQUE_CHIFFRES[minute % 10]);
 }
 
-void maxDigit(byte index, byte segments) {
-  if (index > 3) return;
-  maxWrite(index + 1, segments);
-}
+void ht16k33_afficher_reglage() {
+  byte dizaine_heure = heure_reglage / 10;
+  byte unite_heure = heure_reglage % 10;
+  byte dizaine_minute = minute_reglage / 10;
+  byte unite_minute = minute_reglage % 10;
 
-void displayHHMM(byte h, byte m) {
-  maxDigit(0, DIGIT_MASK[h / 10]);
-  maxDigit(1, DIGIT_MASK[h % 10]);
-  maxDigit(2, DIGIT_MASK[m / 10]);
-  maxDigit(3, DIGIT_MASK[m % 10]);
-}
-
-void displayEdit() {
-  byte hTens = editHour / 10;
-  byte hUnits = editHour % 10;
-  byte mTens = editMinute / 10;
-  byte mUnits = editMinute % 10;
-
-  if (editField == EDIT_HOUR && !editVisible) {
-    maxDigit(0, 0x00);
-    maxDigit(1, 0x00);
+  if (champ_reglage == REGLAGE_HEURE && !affichage_reglage_visible) {
+    ht16k33_ecrire_chiffre(0, 0x00);
+    ht16k33_ecrire_chiffre(1, 0x00);
   } else {
-    maxDigit(0, DIGIT_MASK[hTens]);
-    maxDigit(1, DIGIT_MASK[hUnits]);
+    ht16k33_ecrire_chiffre(0, HT16K33_MASQUE_CHIFFRES[dizaine_heure]);
+    ht16k33_ecrire_chiffre(1, HT16K33_MASQUE_CHIFFRES[unite_heure]);
   }
 
-  if (editField == EDIT_MINUTE && !editVisible) {
-    maxDigit(2, 0x00);
-    maxDigit(3, 0x00);
+  if (champ_reglage == REGLAGE_MINUTE && !affichage_reglage_visible) {
+    ht16k33_ecrire_chiffre(2, 0x00);
+    ht16k33_ecrire_chiffre(3, 0x00);
   } else {
-    maxDigit(2, DIGIT_MASK[mTens]);
-    maxDigit(3, DIGIT_MASK[mUnits]);
+    ht16k33_ecrire_chiffre(2, HT16K33_MASQUE_CHIFFRES[dizaine_minute]);
+    ht16k33_ecrire_chiffre(3, HT16K33_MASQUE_CHIFFRES[unite_minute]);
   }
 }
 
-void setColon(bool on) {
-  digitalWrite(PIN_COLON, on ? HIGH : LOW);
+void regler_deux_points(bool actif) {
+  digitalWrite(BROCHE_DEUX_POINTS, actif ? HIGH : LOW);
 }
 
 // ============================================================
 // DS3231
 // ============================================================
-bool rtcReadTime() {
-  Wire.beginTransmission(RTC_ADDRESS);
+
+bool ds3231_disponible() {
+  Wire.beginTransmission(ADRESSE_I2C_DS3231);
+  return Wire.endTransmission() == 0;
+}
+
+bool ds3231_lire_heure() {
+  Wire.beginTransmission(ADRESSE_I2C_DS3231);
   Wire.write(0x00);
-  if (Wire.endTransmission() != 0) return false;
 
-  if (Wire.requestFrom(RTC_ADDRESS, (byte)3) != 3) return false;
+  if (Wire.endTransmission() != 0) {
+    return false;
+  }
 
-  secondNow = bcdToDec(Wire.read() & 0x7F);
-  minuteNow = bcdToDec(Wire.read() & 0x7F);
-  hourNow = bcdToDec(Wire.read() & 0x3F);
+  if (Wire.requestFrom(ADRESSE_I2C_DS3231, (byte)3) != 3) {
+    return false;
+  }
 
-  if (hourNow > 23 || minuteNow > 59 || secondNow > 59) return false;
+  seconde_actuelle = convertir_bcd_vers_decimal(Wire.read() & 0x7F);
+  minute_actuelle = convertir_bcd_vers_decimal(Wire.read() & 0x7F);
+  heure_actuelle = convertir_bcd_vers_decimal(Wire.read() & 0x3F);
+
+  if (heure_actuelle > 23 || minute_actuelle > 59 || seconde_actuelle > 59) {
+    return false;
+  }
+
   return true;
 }
 
-bool rtcWriteTime(byte h, byte m, byte s) {
-  if (h > 23 || m > 59 || s > 59) return false;
+bool ds3231_ecrire_heure(byte heure, byte minute, byte seconde) {
+  if (heure > 23 || minute > 59 || seconde > 59) {
+    return false;
+  }
 
-  Wire.beginTransmission(RTC_ADDRESS);
+  Wire.beginTransmission(ADRESSE_I2C_DS3231);
   Wire.write(0x00);
-  Wire.write(decToBcd(s));
-  Wire.write(decToBcd(m));
-  Wire.write(decToBcd(h));
+  Wire.write(convertir_decimal_vers_bcd(seconde));
+  Wire.write(convertir_decimal_vers_bcd(minute));
+  Wire.write(convertir_decimal_vers_bcd(heure));
+
   return Wire.endTransmission() == 0;
 }
 
 // ============================================================
 // 74HC595 + ULN2803A + contour
 // ============================================================
-void clearContour() {
-  for (byte i = 0; i < SHIFT_REG_COUNT; i++) {
-    contourData[i] = 0x00;
+
+void effacer_donnees_595() {
+  for (byte index_595 = 0; index_595 < NOMBRE_595; index_595++) {
+    donnees_595[index_595] = 0x00;
   }
 }
 
-void setContourGroup(byte group, bool on) {
-  if (group >= CONTOUR_GROUPS) return;
-
-  byte chip = group / 8;
-  byte bit = group % 8;
-
-  if (on) contourData[chip] |= (byte)(1 << bit);
-  else contourData[chip] &= (byte)~(1 << bit);
-}
-
-void writeContour() {
-  digitalWrite(PIN_595_LATCH, LOW);
-
-  // IMPORTANT : Q0 doit recevoir le bit 0.
-  // Avec un 74HC595, le premier bit envoyé termine sur Q7.
-  // On envoie donc MSB first pour que le bit 0 finisse sur Q0.
-  // Le dernier CI de la chaîne doit être envoyé en premier.
-  for (int chip = SHIFT_REG_COUNT - 1; chip >= 0; chip--) {
-    shiftOut(PIN_595_DATA, PIN_CLOCK, MSBFIRST, contourData[chip]);
-  }
-
-  digitalWrite(PIN_595_LATCH, HIGH);
-}
-
-void contourInit() {
-  pinMode(PIN_595_DATA, OUTPUT);
-  pinMode(PIN_595_LATCH, OUTPUT);
-  pinMode(PIN_CLOCK, OUTPUT);
-
-  clearContour();
-  writeContour();
-}
-
-void updateContour() {
-  if (!watchOn) return;
-  if (millis() - lastContourUpdate < CONTOUR_INTERVAL) return;
-
-  lastContourUpdate = millis();
-
-  clearContour();
-  setContourGroup(contourGroup, true);
-  writeContour();
-
-  contourGroup++;
-  if (contourGroup >= CONTOUR_GROUPS) contourGroup = 0;
-}
-
-// ============================================================
-// Buzzer
-// ============================================================
-void beepAction() {
-  tone(PIN_BUZZER, 880, 60);
-}
-
-void beepDigit(byte digit) {
-  const unsigned int frequencies[10] = {
-    262, 294, 330, 349, 392, 440, 494, 523, 587, 659
-  };
-  tone(PIN_BUZZER, frequencies[digit % 10], 75);
-}
-
-void startMelody() {
-  melodyIndex = 0;
-  melodyNext = 0;
-}
-
-void updateMelody() {
-  if (!startupActive) return;
-
-  unsigned long now = millis();
-  if (now < melodyNext) return;
-
-  if (melodyIndex >= STARTUP_MELODY_COUNT) {
-    noTone(PIN_BUZZER);
-    melodyNext = now + 100000UL;
+void regler_groupe_contour(byte groupe, bool actif) {
+  if (groupe >= NOMBRE_GROUPES_CONTOUR) {
     return;
   }
 
-  tone(PIN_BUZZER,
-       STARTUP_MELODY[melodyIndex].frequency,
-       STARTUP_MELODY[melodyIndex].duration - 10);
+  byte index_595 = groupe / 8;
+  byte bit_sortie = groupe % 8;
 
-  melodyNext = now + STARTUP_MELODY[melodyIndex].duration;
-  melodyIndex++;
+  if (actif) {
+    donnees_595[index_595] |= (byte)(1 << bit_sortie);
+  } else {
+    donnees_595[index_595] &= (byte)~(1 << bit_sortie);
+  }
+}
+
+void ecrire_donnees_595() {
+  digitalWrite(BROCHE_595_VERROU, LOW);
+
+  // Le dernier CI doit etre envoye en premier dans cette chaine.
+  for (int index_595 = NOMBRE_595 - 1; index_595 >= 0; index_595--) {
+    shiftOut(
+      BROCHE_595_DONNEES,
+      BROCHE_HORLOGE,
+      MSBFIRST,
+      donnees_595[index_595]
+    );
+  }
+
+  digitalWrite(BROCHE_595_VERROU, HIGH);
+}
+
+void initialiser_contour() {
+  pinMode(BROCHE_595_DONNEES, OUTPUT);
+  pinMode(BROCHE_595_VERROU, OUTPUT);
+  pinMode(BROCHE_HORLOGE, OUTPUT);
+
+  effacer_donnees_595();
+  ecrire_donnees_595();
+}
+
+void mettre_a_jour_contour() {
+  if (!montre_active) {
+    return;
+  }
+
+  if (millis() - derniere_mise_a_jour_contour < INTERVALLE_CONTOUR) {
+    return;
+  }
+
+  derniere_mise_a_jour_contour = millis();
+
+  effacer_donnees_595();
+  regler_groupe_contour(groupe_contour, true);
+  ecrire_donnees_595();
+
+  groupe_contour++;
+
+  if (groupe_contour >= NOMBRE_GROUPES_CONTOUR) {
+    groupe_contour = 0;
+  }
 }
 
 // ============================================================
-// Splash / démarrage
+// Avertisseur et melodie
 // ============================================================
-void displaySplash(byte frame) {
-  byte mask = 0;
 
-  switch (frame % 8) {
-    case 0: mask = SEG_A; break;
-    case 1: mask = SEG_B; break;
-    case 2: mask = SEG_C; break;
-    case 3: mask = SEG_D; break;
-    case 4: mask = SEG_E; break;
-    case 5: mask = SEG_F; break;
-    case 6: mask = SEG_G; break;
-    case 7: mask = SEG_A | SEG_B | SEG_C | SEG_D | SEG_E | SEG_F | SEG_G; break;
+void bip_action() {
+  tone(BROCHE_AVERTISSEUR, 880, 60);
+}
+
+void bip_chiffre(byte chiffre) {
+  const unsigned int frequences[10] = {
+    262, 294, 330, 349, 392, 440, 494, 523, 587, 659
+  };
+
+  tone(BROCHE_AVERTISSEUR, frequences[chiffre % 10], 75);
+}
+
+void demarrer_melodie() {
+  index_note = 0;
+  prochaine_note = 0;
+}
+
+void mettre_a_jour_melodie() {
+  if (!demarrage_actif) {
+    return;
   }
 
-  maxDigit(0, mask);
-  maxDigit(1, mask);
-  maxDigit(2, mask);
-  maxDigit(3, mask);
-  setColon((frame % 2) == 0);
-}
+  unsigned long maintenant = millis();
 
-void startWatch() {
-  watchOn = true;
-  editMode = false;
-  startupActive = true;
-  startupStart = millis();
-  lastStartupFrame = 0;
-  startupFrame = 0;
-  contourGroup = 0;
-  startMelody();
-
-  maxWrite(MAX_REG_SHUTDOWN, 0x01);
-  maxClear();
-  clearContour();
-  writeContour();
-}
-
-void stopWatch() {
-  watchOn = false;
-  startupActive = false;
-  editMode = false;
-  modeClicks = 0;
-  noTone(PIN_BUZZER);
-
-  maxClear();
-  setColon(false);
-  clearContour();
-  writeContour();
-  maxWrite(MAX_REG_SHUTDOWN, 0x00);
-}
-
-void updateStartup() {
-  if (!startupActive) return;
-
-  unsigned long now = millis();
-
-  if (now - lastStartupFrame >= STARTUP_FRAME_INTERVAL) {
-    lastStartupFrame = now;
-    displaySplash(startupFrame);
-    startupFrame++;
+  if (maintenant < prochaine_note) {
+    return;
   }
 
-  if (now - startupStart >= STARTUP_DURATION) {
-    startupActive = false;
-    noTone(PIN_BUZZER);
+  if (index_note >= NOMBRE_NOTES_DEMARRAGE) {
+    noTone(BROCHE_AVERTISSEUR);
+    prochaine_note = maintenant + 100000UL;
+    return;
+  }
 
-    if (!rtcReadTime()) {
-      hourNow = 0;
-      minuteNow = 0;
-      secondNow = 0;
+  tone(
+    BROCHE_AVERTISSEUR,
+    MELODIE_DEMARRAGE[index_note].frequence,
+    MELODIE_DEMARRAGE[index_note].duree - 10
+  );
+
+  prochaine_note = maintenant + MELODIE_DEMARRAGE[index_note].duree;
+  index_note++;
+}
+
+// ============================================================
+// Animation de demarrage
+// ============================================================
+
+void ht16k33_afficher_animation(byte image) {
+  byte segments = 0x00;
+
+  switch (image % 8) {
+    case 0: segments = HT16K33_SEGMENT_A; break;
+    case 1: segments = HT16K33_SEGMENT_B; break;
+    case 2: segments = HT16K33_SEGMENT_C; break;
+    case 3: segments = HT16K33_SEGMENT_D; break;
+    case 4: segments = HT16K33_SEGMENT_E; break;
+    case 5: segments = HT16K33_SEGMENT_F; break;
+    case 6: segments = HT16K33_SEGMENT_G; break;
+    case 7:
+      segments =
+        HT16K33_SEGMENT_A |
+        HT16K33_SEGMENT_B |
+        HT16K33_SEGMENT_C |
+        HT16K33_SEGMENT_D |
+        HT16K33_SEGMENT_E |
+        HT16K33_SEGMENT_F |
+        HT16K33_SEGMENT_G;
+      break;
+  }
+
+  for (byte index_chiffre = 0; index_chiffre < 4; index_chiffre++) {
+    ht16k33_ecrire_chiffre(index_chiffre, segments);
+  }
+
+  regler_deux_points((image % 2) == 0);
+}
+
+void demarrer_montre() {
+  montre_active = true;
+  mode_reglage = false;
+  demarrage_actif = true;
+
+  debut_demarrage = millis();
+  derniere_image_demarrage = 0;
+  image_demarrage = 0;
+  groupe_contour = 0;
+
+  demarrer_melodie();
+
+  ht16k33_effacer_affichage();
+  effacer_donnees_595();
+  ecrire_donnees_595();
+}
+
+void arreter_montre() {
+  montre_active = false;
+  demarrage_actif = false;
+  mode_reglage = false;
+  nombre_clics_mode = 0;
+
+  noTone(BROCHE_AVERTISSEUR);
+
+  ht16k33_effacer_affichage();
+  regler_deux_points(false);
+
+  effacer_donnees_595();
+  ecrire_donnees_595();
+}
+
+void mettre_a_jour_demarrage() {
+  if (!demarrage_actif) {
+    return;
+  }
+
+  unsigned long maintenant = millis();
+
+  if (maintenant - derniere_image_demarrage >= INTERVALLE_IMAGE_DEMARRAGE) {
+    derniere_image_demarrage = maintenant;
+    ht16k33_afficher_animation(image_demarrage);
+    image_demarrage++;
+  }
+
+  if (maintenant - debut_demarrage >= DUREE_DEMARRAGE) {
+    demarrage_actif = false;
+    noTone(BROCHE_AVERTISSEUR);
+
+    if (!ds3231_lire_heure()) {
+      heure_actuelle = 0;
+      minute_actuelle = 0;
+      seconde_actuelle = 0;
     }
 
-    displayHHMM(hourNow, minuteNow);
-    setColon(true);
+    ht16k33_afficher_heure(heure_actuelle, minute_actuelle);
+    regler_deux_points(true);
   }
 }
 
 // ============================================================
 // Boutons
 // ============================================================
-bool pressed(Button &button) {
-  bool reading = digitalRead(button.pin);
 
-  if (reading != button.raw) {
-    button.raw = reading;
-    button.changedAt = millis();
+bool bouton_presse(Bouton &bouton) {
+  bool lecture = digitalRead(bouton.broche);
+
+  if (lecture != bouton.lecture_brute) {
+    bouton.lecture_brute = lecture;
+    bouton.dernier_changement = millis();
   }
 
-  if (millis() - button.changedAt >= DEBOUNCE_MS && reading != button.stable) {
-    button.stable = reading;
-    if (button.stable == LOW) return true;
+  if (
+    millis() - bouton.dernier_changement >= DELAI_ANTI_REBOND &&
+    lecture != bouton.etat_stable
+  ) {
+    bouton.etat_stable = lecture;
+
+    if (bouton.etat_stable == LOW) {
+      return true;
+    }
   }
 
   return false;
 }
 
-void resetClock() {
-  if (rtcWriteTime(0, 0, 0)) {
-    hourNow = 0;
-    minuteNow = 0;
-    secondNow = 0;
+void reinitialiser_horloge() {
+  if (ds3231_ecrire_heure(0, 0, 0)) {
+    heure_actuelle = 0;
+    minute_actuelle = 0;
+    seconde_actuelle = 0;
   }
 
-  beepAction();
-  displayHHMM(hourNow, minuteNow);
+  bip_action();
+  ht16k33_afficher_heure(heure_actuelle, minute_actuelle);
 }
 
-void enterEditMode() {
-  if (!rtcReadTime()) return;
-
-  editHour = hourNow;
-  editMinute = minuteNow;
-  editField = EDIT_HOUR;
-  editVisible = true;
-  editMode = true;
-  lastBlink = millis();
-  displayEdit();
-  beepAction();
-}
-
-void validateEditMode() {
-  if (rtcWriteTime(editHour, editMinute, 0)) {
-    hourNow = editHour;
-    minuteNow = editMinute;
-    secondNow = 0;
+void entrer_mode_reglage() {
+  if (!ds3231_lire_heure()) {
+    return;
   }
 
-  editMode = false;
-  editVisible = true;
-  displayHHMM(hourNow, minuteNow);
-  setColon(true);
-  beepAction();
+  heure_reglage = heure_actuelle;
+  minute_reglage = minute_actuelle;
+  champ_reglage = REGLAGE_HEURE;
+  affichage_reglage_visible = true;
+  mode_reglage = true;
+  dernier_clignotement = millis();
+
+  ht16k33_afficher_reglage();
+  bip_action();
 }
 
-void processModeClicks() {
-  if (modeClicks == 0) return;
-  if (millis() < modeDeadline) return;
+void valider_mode_reglage() {
+  if (ds3231_ecrire_heure(heure_reglage, minute_reglage, 0)) {
+    heure_actuelle = heure_reglage;
+    minute_actuelle = minute_reglage;
+    seconde_actuelle = 0;
+  }
 
-  if (!editMode) {
-    if (modeClicks == 1) {
-      resetClock();
-    } else if (modeClicks == 2) {
-      enterEditMode();
+  mode_reglage = false;
+  affichage_reglage_visible = true;
+
+  ht16k33_afficher_heure(heure_actuelle, minute_actuelle);
+  regler_deux_points(true);
+  bip_action();
+}
+
+void traiter_clics_mode() {
+  if (nombre_clics_mode == 0) {
+    return;
+  }
+
+  if (millis() < fin_fenetre_mode) {
+    return;
+  }
+
+  if (!mode_reglage) {
+    if (nombre_clics_mode == 1) {
+      reinitialiser_horloge();
+    } else if (nombre_clics_mode == 2) {
+      entrer_mode_reglage();
     }
   } else {
-    if (modeClicks == 1) {
-      editField = (editField == EDIT_HOUR) ? EDIT_MINUTE : EDIT_HOUR;
-      editVisible = true;
-      lastBlink = millis();
-      displayEdit();
-      beepAction();
-    } else if (modeClicks == 3) {
-      validateEditMode();
+    if (nombre_clics_mode == 1) {
+      champ_reglage =
+        (champ_reglage == REGLAGE_HEURE)
+        ? REGLAGE_MINUTE
+        : REGLAGE_HEURE;
+
+      affichage_reglage_visible = true;
+      dernier_clignotement = millis();
+
+      ht16k33_afficher_reglage();
+      bip_action();
+    } else if (nombre_clics_mode == 3) {
+      valider_mode_reglage();
     }
   }
 
-  modeClicks = 0;
+  nombre_clics_mode = 0;
 }
 
-void handleButtons() {
-  if (pressed(buttonPower)) {
-    if (watchOn) stopWatch();
-    else startWatch();
+void gerer_boutons() {
+  if (bouton_presse(bouton_alimentation)) {
+    if (montre_active) {
+      arreter_montre();
+    } else {
+      demarrer_montre();
+    }
   }
 
-  if (!watchOn || startupActive) return;
-
-  if (pressed(buttonMode)) {
-    modeClicks++;
-    if (modeClicks > 3) modeClicks = 3;
-    modeDeadline = millis() + MODE_WINDOW_MS;
+  if (!montre_active || demarrage_actif) {
+    return;
   }
 
-  if (editMode) {
-    if (pressed(buttonPlus)) {
-      if (editField == EDIT_HOUR) {
-        editHour = (editHour + 1) % 24;
-        beepDigit(editHour % 10);
+  if (bouton_presse(bouton_mode)) {
+    nombre_clics_mode++;
+
+    if (nombre_clics_mode > 3) {
+      nombre_clics_mode = 3;
+    }
+
+    fin_fenetre_mode = millis() + FENETRE_CLICS_MODE;
+  }
+
+  if (mode_reglage) {
+    if (bouton_presse(bouton_plus)) {
+      if (champ_reglage == REGLAGE_HEURE) {
+        heure_reglage = (heure_reglage + 1) % 24;
+        bip_chiffre(heure_reglage % 10);
       } else {
-        editMinute = (editMinute + 1) % 60;
-        beepDigit(editMinute % 10);
+        minute_reglage = (minute_reglage + 1) % 60;
+        bip_chiffre(minute_reglage % 10);
       }
-      editVisible = true;
-      lastBlink = millis();
-      displayEdit();
+
+      affichage_reglage_visible = true;
+      dernier_clignotement = millis();
+      ht16k33_afficher_reglage();
     }
 
-    if (pressed(buttonMinus)) {
-      if (editField == EDIT_HOUR) {
-        editHour = (editHour == 0) ? 23 : editHour - 1;
-        beepDigit(editHour % 10);
+    if (bouton_presse(bouton_moins)) {
+      if (champ_reglage == REGLAGE_HEURE) {
+        heure_reglage = (heure_reglage == 0) ? 23 : heure_reglage - 1;
+        bip_chiffre(heure_reglage % 10);
       } else {
-        editMinute = (editMinute == 0) ? 59 : editMinute - 1;
-        beepDigit(editMinute % 10);
+        minute_reglage = (minute_reglage == 0) ? 59 : minute_reglage - 1;
+        bip_chiffre(minute_reglage % 10);
       }
-      editVisible = true;
-      lastBlink = millis();
-      displayEdit();
+
+      affichage_reglage_visible = true;
+      dernier_clignotement = millis();
+      ht16k33_afficher_reglage();
     }
   }
 
-  processModeClicks();
+  traiter_clics_mode();
 }
 
-void updateEditBlink() {
-  if (!editMode) return;
+void mettre_a_jour_clignotement_reglage() {
+  if (!mode_reglage) {
+    return;
+  }
 
-  if (millis() - lastBlink >= BLINK_INTERVAL) {
-    lastBlink = millis();
-    editVisible = !editVisible;
-    displayEdit();
+  if (millis() - dernier_clignotement >= INTERVALLE_CLIGNOTEMENT) {
+    dernier_clignotement = millis();
+    affichage_reglage_visible = !affichage_reglage_visible;
+    ht16k33_afficher_reglage();
   }
 }
+
+// ============================================================
+// Verification du bus I2C
+// ============================================================
+
+void verifier_bus_i2c() {
+  byte appareils_trouves = 0;
+
+  for (byte adresse = 1; adresse < 127; adresse++) {
+    Wire.beginTransmission(adresse);
+
+    if (Wire.endTransmission() == 0) {
+      appareils_trouves++;
+    }
+  }
+
+  Serial.print("Appareils I2C trouves : ");
+  Serial.println(appareils_trouves);
+
+  Serial.print("DS3231 : ");
+  Serial.println(ds3231_disponible() ? "OK" : "ABSENT");
+
+  Serial.print("HT16K33 : ");
+  Serial.println(ht16k33_disponible() ? "OK" : "ABSENT");
+}
+
+// ============================================================
+// Configuration et boucle principale
+// ============================================================
 
 void setup() {
-  pinMode(PIN_BUTTON_POWER, INPUT_PULLUP);
-  pinMode(PIN_BUTTON_MODE, INPUT_PULLUP);
-  pinMode(PIN_BUTTON_PLUS, INPUT_PULLUP);
-  pinMode(PIN_BUTTON_MINUS, INPUT_PULLUP);
-  pinMode(PIN_BUZZER, OUTPUT);
-  pinMode(PIN_COLON, OUTPUT);
+  pinMode(BROCHE_BOUTON_ALIMENTATION, INPUT_PULLUP);
+  pinMode(BROCHE_BOUTON_MODE, INPUT_PULLUP);
+  pinMode(BROCHE_BOUTON_PLUS, INPUT_PULLUP);
+  pinMode(BROCHE_BOUTON_MOINS, INPUT_PULLUP);
 
-  digitalWrite(PIN_COLON, LOW);
+  pinMode(BROCHE_AVERTISSEUR, OUTPUT);
+  pinMode(BROCHE_DEUX_POINTS, OUTPUT);
 
+  digitalWrite(BROCHE_DEUX_POINTS, LOW);
+
+  Serial.begin(115200);
   Wire.begin();
-  maxInit();
-  contourInit();
-  rtcReadTime();
 
-  watchOn = false;
-  startupActive = false;
-  editMode = false;
+  initialiser_contour();
+
+  if (ht16k33_disponible()) {
+    ht16k33_initialiser();
+  }
+
+  ds3231_lire_heure();
+  verifier_bus_i2c();
+
+  montre_active = false;
+  demarrage_actif = false;
+  mode_reglage = false;
 }
 
 void loop() {
-  handleButtons();
+  gerer_boutons();
 
-  if (!watchOn) return;
+  if (!montre_active) {
+    return;
+  }
 
-  updateMelody();
-  updateStartup();
-  updateContour();
+  mettre_a_jour_melodie();
+  mettre_a_jour_demarrage();
+  mettre_a_jour_contour();
 
-  if (startupActive) return;
+  if (demarrage_actif) {
+    return;
+  }
 
-  if (!editMode && millis() - lastRTCRead >= RTC_INTERVAL) {
-    lastRTCRead = millis();
-    if (rtcReadTime()) {
-      displayHHMM(hourNow, minuteNow);
+  if (
+    !mode_reglage &&
+    millis() - derniere_lecture_ds3231 >= INTERVALLE_LECTURE_DS3231
+  ) {
+    derniere_lecture_ds3231 = millis();
+
+    if (ds3231_lire_heure()) {
+      ht16k33_afficher_heure(heure_actuelle, minute_actuelle);
     }
   }
 
-  updateEditBlink();
+  mettre_a_jour_clignotement_reglage();
 }

@@ -43,29 +43,29 @@ const byte HT16K33_LUMINOSITE = 8;
 // Sur un module repere A0..A15 et C0..C7, verifier la serigraphie
 // avant de connecter le panneau.
 
-const byte HT16K33_LIGNE0_SEG_A = 0;
-const byte HT16K33_LIGNE1_SEG_B = 1;
-const byte HT16K33_LIGNE2_SEG_C = 2;
-const byte HT16K33_LIGNE3_SEG_D = 3;
-const byte HT16K33_LIGNE4_SEG_E = 4;
-const byte HT16K33_LIGNE5_SEG_F = 5;
-const byte HT16K33_LIGNE6_SEG_G = 6;
-const byte HT16K33_LIGNE7_POINT_DECIMAL = 7;
+const byte HT16K33_ROW0_SEGMENT_A = 0;
+const byte HT16K33_ROW1_SEGMENT_B = 1;
+const byte HT16K33_ROW2_SEGMENT_C = 2;
+const byte HT16K33_ROW3_SEGMENT_D = 3;
+const byte HT16K33_ROW4_SEGMENT_E = 4;
+const byte HT16K33_ROW5_SEGMENT_F = 5;
+const byte HT16K33_ROW6_SEGMENT_G = 6;
+const byte HT16K33_ROW7_POINT_DECIMAL = 7;
 
-const byte HT16K33_COMMUN0_CHIFFRE1 = 0;
-const byte HT16K33_COMMUN1_CHIFFRE2 = 1;
-const byte HT16K33_COMMUN2_CHIFFRE3 = 2;
-const byte HT16K33_COMMUN3_CHIFFRE4 = 3;
+const byte HT16K33_COM0_CHIFFRE1 = 0;
+const byte HT16K33_COM1_CHIFFRE2 = 1;
+const byte HT16K33_COM2_CHIFFRE3 = 2;
+const byte HT16K33_COM3_CHIFFRE4 = 3;
 
 // RAM du HT16K33 :
 // COM0 = 0x00/0x01, COM1 = 0x02/0x03,
 // COM2 = 0x04/0x05, COM3 = 0x06/0x07.
 // Le premier octet contient ROW0 a ROW7.
 
-const byte HT16K33_RAM_COMMUN0 = 0x00;
-const byte HT16K33_RAM_COMMUN1 = 0x02;
-const byte HT16K33_RAM_COMMUN2 = 0x04;
-const byte HT16K33_RAM_COMMUN3 = 0x06;
+const byte HT16K33_RAM_COM0 = 0x00;
+const byte HT16K33_RAM_COM1 = 0x02;
+const byte HT16K33_RAM_COM2 = 0x04;
+const byte HT16K33_RAM_COM3 = 0x06;
 
 const byte HT16K33_SEGMENT_A = 0x01;
 const byte HT16K33_SEGMENT_B = 0x02;
@@ -233,10 +233,10 @@ void ht16k33_ecrire_chiffre(byte index_chiffre, byte segments) {
   }
 
   const byte adresses_ram[4] = {
-    HT16K33_RAM_COMMUN0,
-    HT16K33_RAM_COMMUN1,
-    HT16K33_RAM_COMMUN2,
-    HT16K33_RAM_COMMUN3
+    HT16K33_RAM_COM0,
+    HT16K33_RAM_COM1,
+    HT16K33_RAM_COM2,
+    HT16K33_RAM_COM3
   };
 
   byte adresse_ram = adresses_ram[index_chiffre];
